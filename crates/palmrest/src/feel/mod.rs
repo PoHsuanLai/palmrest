@@ -8,7 +8,7 @@ pub mod quantize;
 pub use gain::RepeatGain;
 pub use lock::{AxisLock, Hold, Lock, LockEvent, LockParams, Move, Sample};
 pub use natural::{NaturalScroll, offset_delta};
-pub use quantize::{Quanta, Quantizer, WheelDelta};
+pub use quantize::{Quanta, Quantized, Quantizer, WheelDelta};
 
 use crate::config::Config;
 

@@ -6,7 +6,7 @@
 //! X become `Blocked`, because that motion belongs to the workspace swipe. Every branch below
 //! mirrors a branch of the Python class so the parity fixtures can compare decisions per report.
 
-use super::gain::{RepeatGain, px, raw_per_hi_res, velocity_gain};
+use super::gain::{HI_RES_PER_DETENT, RepeatGain, raw_per_hi_res, velocity_gain};
 use super::quantize::{Quanta, Quantizer};
 use crate::protocol::Axis;
 use crate::time::Mono;
@@ -58,7 +58,7 @@ pub enum Hold {
 pub struct Move {
     pub axis: Axis,
     pub raw: i32,
-    /// Exact px, finger direction, all gains applied.
+    /// Px in finger direction, all gains applied: the wheel stream before truncation.
     pub px: f64,
     /// The wheel device's share of this sample.
     pub quanta: Quanta,
@@ -176,7 +176,9 @@ impl AxisLock {
     }
 
     fn motion(self, dx: i32, dy: i32, now: Mono, p: &LockParams) -> (Self, Vec<LockEvent>) {
-        let timed_out = self.last_motion.is_some_and(|t| now.since(t) >= p.timeout);
+        let timed_out = self
+            .last_motion
+            .is_some_and(|t| now.float_since(t) >= p.timeout.as_secs_f64());
         match self.lock {
             Lock::Free { .. } => self.accumulate(dx, dy, now, p, vec![]),
             _ if timed_out => self
@@ -202,13 +204,14 @@ impl AxisLock {
         if raw == 0 {
             return (self, vec![]);
         }
-        let dt = self.last_motion.map_or(0.0, |t| now.seconds_since(t));
+        let dt = self.last_motion.map_or(0.0, |t| now.float_since(t));
         let rpu = raw_per_hi_res(
             p.speed,
             self.repeat_gain,
             velocity_gain(raw, dt, p.velocity_gain_max),
         );
-        let (quant, quanta) = self.quant.step(raw, rpu);
+        let (quant, q) = self.quant.step(raw, rpu);
+        let quanta = q.quanta;
         let output = quanta != Quanta::default();
         let s = Self {
             quant,
@@ -219,7 +222,7 @@ impl AxisLock {
         let m = Move {
             axis,
             raw,
-            px: px(f64::from(raw), rpu, p.detent_px),
+            px: q.exact_units * p.detent_px / f64::from(HI_RES_PER_DETENT),
             quanta,
         };
         (s, vec![LockEvent::Moved(m)])

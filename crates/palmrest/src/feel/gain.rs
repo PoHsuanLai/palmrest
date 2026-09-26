@@ -37,7 +37,7 @@ impl Default for RepeatGain {
 impl RepeatGain {
     /// The divisor after a new contact set lands at `now`.
     pub fn on_new_stroke(self, last_output: Option<Mono>, now: Mono) -> Self {
-        let repeat = last_output.is_some_and(|t| now.since(t) < REPEAT_WINDOW);
+        let repeat = last_output.is_some_and(|t| now.float_since(t) < REPEAT_WINDOW.as_secs_f64());
         Self {
             divisor: if repeat {
                 self.divisor.saturating_sub(1).max(1)
