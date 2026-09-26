@@ -1,5 +1,6 @@
 //! The `palmrest` command: the daemon, and its record / replay / probe tools.
 
+use palmrest::compare::compare_curves;
 use palmrest::config::{self, Config};
 use palmrest::daemon::{self, latency, record};
 use palmrest::outputs::uinput::{self, PROBE_PERMIT, ProbePermit};
@@ -15,6 +16,8 @@ const USAGE: &str = "usage:
   palmrest record FILE [SECONDS]   record raw reports (stops after 20 s of no touch)
   palmrest replay FILE [--calibrated] [--latency]
                                    print the outputs a recording produces
+  palmrest replay FILE [--calibrated] --curve mac-like
+                                   cumulative px and peak gain under both curves
   palmrest --check-uinput          can this user create virtual devices? (needs
                                    PALMREST_ALLOW_UINPUT_PROBE=1; opens and closes only)
   palmrest --print-config          print the default gestures.toml";
@@ -83,6 +86,14 @@ fn replay_cmd(file: &str, flags: &[&str]) -> Result<(), String> {
     } else {
         Timing::Arrival
     };
+    match flags.iter().position(|f| *f == "--curve") {
+        None => {}
+        Some(i) if flags.get(i + 1) == Some(&"mac-like") => {
+            print!("{}", compare_curves(&records, &cfg, timing).table());
+            return Ok(());
+        }
+        Some(_) => return Err(USAGE.to_owned()),
+    }
     for step in replay(&records, cfg, timing) {
         for o in step.outs {
             println!(

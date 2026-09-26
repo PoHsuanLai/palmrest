@@ -6,6 +6,7 @@
 //! X become `Blocked`, because that motion belongs to the workspace swipe. Every branch below
 //! mirrors a branch of the Python class so the parity fixtures can compare decisions per report.
 
+use super::curve::CurveParams;
 use super::gain::{HI_RES_PER_DETENT, RepeatGain, raw_per_hi_res, velocity_gain};
 use super::quantize::{Quanta, Quantizer};
 pub use super::rule::{Lock, LockParams, decide};
@@ -36,6 +37,8 @@ pub struct Move {
     pub px: f64,
     /// The wheel device's share of this sample.
     pub quanta: Quanta,
+    /// The gain over the base ratio this sample was scrolled with.
+    pub gain: f64,
 }
 
 /// What one report did to the lock, in order.
@@ -179,11 +182,14 @@ impl AxisLock {
             return (self, vec![]);
         }
         let dt = self.last_motion.map_or(0.0, |t| now.float_since(t));
-        let rpu = raw_per_hi_res(
-            p.speed,
-            self.repeat_gain,
-            velocity_gain(raw, dt, p.velocity_gain_max),
-        );
+        let (repeat, velocity) = match p.curve {
+            CurveParams::Current => (
+                self.repeat_gain,
+                velocity_gain(raw, dt, p.velocity_gain_max),
+            ),
+            CurveParams::MacLike(m) => (1.0, m.sample_gain(raw, dt)),
+        };
+        let rpu = raw_per_hi_res(p.speed, repeat, velocity);
         let (quant, q) = self.quant.step(raw, rpu);
         let quanta = q.quanta;
         let output = quanta != Quanta::default();
@@ -198,6 +204,7 @@ impl AxisLock {
             raw,
             px: q.exact_units * p.detent_px / f64::from(HI_RES_PER_DETENT),
             quanta,
+            gain: repeat * velocity,
         };
         (s, vec![LockEvent::Moved(m)])
     }
@@ -292,6 +299,7 @@ mod tests {
         velocity_gain_max: 2.0,
         repeat_gain_max: 1.0,
         detent_px: 60.0,
+        curve: CurveParams::Current,
     };
 
     fn one(x: i32, y: i32) -> Vec<Sample> {

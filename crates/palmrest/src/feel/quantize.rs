@@ -60,6 +60,29 @@ impl Quantizer {
     }
 }
 
+/// Fractional hi-res units carried between frames of a synthesized glide, which has px, not
+/// raw units, to quantise.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct UnitCarry {
+    units: f64,
+    hi_res_remainder: i32,
+}
+
+impl UnitCarry {
+    /// Adds `units` hi-res units and returns the whole units now due.
+    pub fn step(self, units: f64) -> (Self, Quanta) {
+        let total = self.units + units;
+        let hi_res = total.trunc() as i32;
+        let carried = self.hi_res_remainder + hi_res;
+        let detents = carried / 120;
+        let next = Self {
+            units: total - f64::from(hi_res),
+            hi_res_remainder: carried - detents * 120,
+        };
+        (next, Quanta { hi_res, detents })
+    }
+}
+
 /// One wheel frame in the Python device's orientation: its y is the raw report's unsigned y,
 /// which is palmrest's y negated. Plasma saved `NaturalScroll=true` against that orientation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -156,6 +179,21 @@ mod tests {
                 "sample {i}: {exact} vs {wheel}"
             );
         }
+    }
+
+    #[test]
+    fn unit_carry_keeps_fractions_and_counts_detents() {
+        let (c, a) = UnitCarry::default().step(0.6);
+        assert_eq!(a, Quanta::default());
+        let (c, b) = c.step(0.6);
+        assert_eq!(b.hi_res, 1, "0.6 + 0.6 = 1.2");
+        let (_, d) = c.step(-5.3);
+        assert_eq!(d.hi_res, -5, "0.2 - 5.3 truncates toward zero");
+        let (_, e) = (0..3).fold((UnitCarry::default(), 0), |(c, n), _| {
+            let (c, q) = c.step(50.0);
+            (c, n + q.detents)
+        });
+        assert_eq!(e, 1, "150 hi-res units cross one detent");
     }
 
     #[test]

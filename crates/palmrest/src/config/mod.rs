@@ -10,13 +10,14 @@ pub mod units;
 pub mod watch;
 
 pub use enums::{
-    ContactNibblePolicy, ForeignOutput, G4Mode, Rejection, SwipeRepeat, WorkspaceMode,
+    ContactNibblePolicy, Curve, ForeignMomentum, ForeignOutput, G4Mode, Rejection, SwipeRepeat,
+    WorkspaceMode,
 };
 pub use file::{CONFIG_VERSION, Config, ParseError, parse, to_toml};
 pub use lenient::Warning;
 pub use load::{Loaded, config_dir, load};
 pub use sections::{
-    GestureSettings, PalmRejectionSettings, ScrollSettings, SwipeSettings, TapSettings,
-    TouchpadSettings,
+    FeelSettings, GestureSettings, MomentumSettings, PalmRejectionSettings, ScrollSettings,
+    SwipeSettings, TapSettings, TouchpadSettings,
 };
 pub use units::{Count, Fraction, Ms, Percent, Px, Units};

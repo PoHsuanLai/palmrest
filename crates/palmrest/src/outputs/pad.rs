@@ -48,8 +48,9 @@ pub enum PadFrame {
 }
 
 /// The pad between frames.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Pad {
+    #[default]
     Up,
     Down {
         landed: Mono,
@@ -57,9 +58,7 @@ pub enum Pad {
         exact: (f64, f64),
     },
     /// The stroke ended but the lift waits until `at`.
-    Lifting {
-        at: Mono,
-    },
+    Lifting { at: Mono },
 }
 
 impl Pad {
@@ -139,6 +138,14 @@ impl Pad {
         match self {
             Pad::Up => (Pad::Up, vec![]),
             _ => (Pad::Up, vec![PadFrame::Lift]),
+        }
+    }
+
+    /// Where the pair's centre is, while it is down.
+    pub fn at(&self) -> Option<PadPoint> {
+        match self {
+            Pad::Down { at, .. } => Some(*at),
+            _ => None,
         }
     }
 

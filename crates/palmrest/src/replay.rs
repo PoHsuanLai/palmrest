@@ -31,17 +31,59 @@ pub struct Step {
 }
 
 /// Replays `records` from a fresh tracker.
+///
+/// Between records the tracker is ticked at its deadlines, as the reader thread's poll timeout
+/// does, and after the last record until it has none left; each tick that produced outputs is a
+/// `Step` of its own at the deadline. A delayed touchpad lift and a synthesized glide therefore
+/// replay frame by frame. A step per record is kept for records; ticks only add steps.
 pub fn replay(records: &[Record], cfg: Config, timing: Timing) -> Vec<Step> {
+    replay_to_end(records, cfg, timing).1
+}
+
+/// `replay`, also returning the tracker after the last record and its ticks.
+pub fn replay_to_end(records: &[Record], cfg: Config, timing: Timing) -> (Tracker, Vec<Step>) {
     let mut tracker = Tracker::new(cfg);
     let mut clock = StampClock::new();
     let mut steps = Vec::with_capacity(records.len());
     for r in records {
-        let (t, clk, step) = feed(tracker, clock, r, timing);
+        let (t, ticks) = ticks_until(tracker, Some(r.at));
+        steps.extend(ticks);
+        let (t, clk, step) = feed(t, clock, r, timing);
         tracker = t;
         clock = clk;
         steps.push(step);
     }
-    steps
+    let (tracker, ticks) = ticks_until(tracker, None);
+    steps.extend(ticks);
+    (tracker, steps)
+}
+
+/// The most ticks one gap may take; a glide at 1 ms frames lasts a few thousand.
+const MAX_TICKS: usize = 100_000;
+
+/// Ticks `tracker` at every deadline before `until` (all of them if `None`).
+fn ticks_until(mut tracker: Tracker, until: Option<Mono>) -> (Tracker, Vec<Step>) {
+    let mut steps = Vec::new();
+    for _ in 0..MAX_TICKS {
+        let Some(d) = tracker.deadline() else { break };
+        if until.is_some_and(|u| d >= u) {
+            break;
+        }
+        let (t, outs) = tracker.tick(d);
+        tracker = t;
+        if !outs.is_empty() {
+            steps.push(Step {
+                at: d,
+                outs,
+                lock: tracker.lock(),
+                error: None,
+            });
+        }
+        if tracker.deadline().is_some_and(|next| next <= d) {
+            break; // a deadline that does not move on would never let the replay finish
+        }
+    }
+    (tracker, steps)
 }
 
 /// One hidraw read through decode, the stamp clock and the tracker: the reader thread's body.

@@ -1,7 +1,7 @@
 //! The sections of `palmrest/gestures.toml`, one struct per table, every key with the default
 //! and range of 22-SETTINGS §3.9 / §3.10 (and `touchpad`, see FINDINGS).
 
-use super::enums::{ContactNibblePolicy, G4Mode, SwipeRepeat, WorkspaceMode};
+use super::enums::{ContactNibblePolicy, Curve, G4Mode, SwipeRepeat, WorkspaceMode};
 use super::units::{Count, Fraction, Ms, Percent, Px, Units};
 use crate::action::ActionMap;
 use crate::settings_struct;
@@ -85,5 +85,34 @@ settings_struct! {
         mm_per_px: Fraction = Fraction(250);
         contact_spacing_mm: Count = Count(20);
         min_down_ms: Ms = Ms(200);
+    }
+}
+
+settings_struct! {
+    /// `[feel]`: the acceleration curve and the `MacLike` shape's constants (FINDINGS F22).
+    /// Speeds are raw mouse units per second of one sample, as the velocity gain measures them.
+    pub struct FeelSettings {
+        curve: Curve = Curve::Current;
+        mac_like_threshold_units_s: Count = Count(1500), in Count(0) => Count(20000);
+        mac_like_scale_units_s: Count = Count(3000), in Count(100) => Count(20000);
+        mac_like_exponent: Fraction = Fraction(1600), in Fraction(1000) => Fraction(4000);
+        mac_like_gain_max: Fraction = Fraction(6000), in Fraction(1000) => Fraction(20000);
+    }
+}
+
+settings_struct! {
+    /// `[momentum]`: the glide palmrest synthesizes with `foreign_momentum = "ours"`: the
+    /// design/11 §11.3.6 values (drag `v' = -a v^b`, release window, thresholds) and the
+    /// frame interval of the synthesized contacts (FINDINGS F23).
+    pub struct MomentumSettings {
+        a: Fraction = Fraction(30000), in Fraction(1000) => Fraction(65000);
+        b: Fraction = Fraction(700), in Fraction(100) => Fraction(950);
+        stop_px_s: Count = Count(1), in Count(1) => Count(1000);
+        window_ms: Ms = Ms(80), in Ms(20) => Ms(200);
+        held_still_ms: Ms = Ms(50), in Ms(10) => Ms(200);
+        min_samples: Count = Count(3), in Count(2) => Count(20);
+        start_px_s: Count = Count(100), in Count(0) => Count(5000);
+        cap_px_s: Count = Count(12000), in Count(100) => Count(60000);
+        frame_ms: Ms = Ms(8), in Ms(1) => Ms(50);
     }
 }

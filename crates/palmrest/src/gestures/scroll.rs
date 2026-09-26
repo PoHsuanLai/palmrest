@@ -51,6 +51,8 @@ pub struct ScrollEvent {
     pub px: f64,
     /// The wheel device's share of a Changed sample.
     pub quanta: Quanta,
+    /// The gain over the base ratio of a Changed sample; zero otherwise.
+    pub gain: f64,
 }
 
 impl ScrollG {
@@ -126,6 +128,7 @@ impl ScrollG {
                     out.push(ScrollEvent {
                         px: m.px,
                         quanta: m.quanta,
+                        gain: m.gain,
                         ..event(id, Phase::Changed, fingers, Some(axis))
                     });
                 }
@@ -197,5 +200,6 @@ fn event(gesture: GestureId, phase: Phase, fingers: u8, axis: Option<Axis>) -> S
         axis,
         px: 0.0,
         quanta: Quanta::default(),
+        gain: 0.0,
     }
 }

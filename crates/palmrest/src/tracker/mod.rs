@@ -4,6 +4,7 @@
 //! device: `now` is an argument and every effect is an `Out`, so a recording replays to exactly
 //! the outputs the live daemon produced.
 
+mod coast;
 mod foreign;
 mod out;
 
@@ -16,7 +17,6 @@ use crate::gestures::{
     ClickGuard, Contacts, FingerDirection, MotionWindow, Moving, OneSwipe, PalmTurn, Press,
     ScrollEvent, ScrollG, SwipeEvent, SwipeG, TapG,
 };
-use crate::outputs::pad::Pad;
 use crate::protocol::{ActiveTouch, Over, ToHost};
 use crate::report::Report;
 use crate::time::Mono;
@@ -32,8 +32,9 @@ pub struct Tracker {
     one: OneSwipe,
     swipe: SwipeG,
     tap: TapG,
-    pad: Pad,
+    foreign: foreign::Foreign,
     claimed: Over,
+    peak_gain: f64,
     touching: ActiveTouch,
 }
 
@@ -48,8 +49,9 @@ impl Tracker {
             one: OneSwipe::Idle,
             swipe: SwipeG::default(),
             tap: TapG::Idle,
-            pad: Pad::Up,
+            foreign: foreign::Foreign::default(),
             claimed: Over::NotOurs,
+            peak_gain: 1.0,
             touching: ActiveTouch::Up,
         }
     }
@@ -74,44 +76,47 @@ impl Tracker {
         self.claimed
     }
 
-    /// When `tick` next has work to do, if ever.
+    /// The largest gain over the base ratio any scroll sample has had so far (for
+    /// `palmrest replay --curve`).
+    pub fn peak_gain(&self) -> f64 {
+        self.peak_gain
+    }
+
+    /// When `tick` next has work to do, if ever: a delayed touchpad lift or a glide frame.
     pub fn deadline(&self) -> Option<Mono> {
-        self.pad.deadline()
+        self.foreign.deadline()
     }
 
     /// A host claimed or released the pointer (the aggregate over subscribers). Contacts on the
-    /// virtual touchpad lift at once when a host takes over, so nothing is left pressed.
+    /// virtual touchpad lift at once when a host takes over, and a synthesized glide ends, so
+    /// nothing is left pressed or moving under our own surfaces.
     pub fn claim(self, over: Over) -> (Self, Vec<Out>) {
-        let (pad, frames) = if over == Over::Ours {
-            self.pad.lift_now()
-        } else {
-            (self.pad, vec![])
+        let (foreign, out) = match over {
+            Over::Ours => self.foreign.lift_now(),
+            Over::NotOurs => (self.foreign, vec![]),
         };
         (
             Self {
                 claimed: over,
-                pad,
+                foreign,
                 ..self
             },
-            frames.into_iter().map(Out::Pad).collect(),
+            out,
         )
     }
 
-    /// Time passed with no report: performs a delayed touchpad lift that has come due.
+    /// Time passed with no report: a delayed touchpad lift or a glide frame that has come due.
     pub fn tick(self, now: Mono) -> (Self, Vec<Out>) {
-        let (pad, frames) = self.pad.tick(now);
-        (
-            Self { pad, ..self },
-            frames.into_iter().map(Out::Pad).collect(),
-        )
+        let (foreign, out) = self.foreign.tick(now, self.claimed, &self.cfg);
+        (Self { foreign, ..self }, out)
     }
 
     /// The mouse went away: cancel what is running, lift everything, say so.
     pub fn disconnect(self, now: Mono) -> (Self, Vec<Out>) {
         let (scroll, events) = self.scroll.disconnect();
         let (mut s, mut out) = Self { scroll, ..self }.scroll_events(&events, now);
-        let (_, frames) = s.pad.lift_now();
-        out.extend(frames.into_iter().map(Out::Pad));
+        let (_, lifted) = s.foreign.clone().lift_now();
+        out.extend(lifted);
         if s.touching == ActiveTouch::Down {
             out.push(Out::Host(ToHost::Touches {
                 active: ActiveTouch::Up,
@@ -193,14 +198,22 @@ impl Tracker {
     }
 
     fn scroll_events(self, events: &[ScrollEvent], now: Mono) -> (Self, Vec<Out>) {
-        let mut pad = self.pad;
+        let mut foreign = self.foreign.clone();
         let mut out = Vec::new();
         for e in events {
-            let (p, o) = foreign::scroll_outs(e, pad, self.claimed, &self.cfg, now);
-            pad = p;
+            let (f, o) = foreign.scroll(e, self.claimed, &self.cfg, now);
+            foreign = f;
             out.extend(o);
         }
-        (Self { pad, ..self }, out)
+        let peak_gain = events.iter().map(|e| e.gain).fold(self.peak_gain, f64::max);
+        (
+            Self {
+                foreign,
+                peak_gain,
+                ..self
+            },
+            out,
+        )
     }
 
     /// G4, G5 and the double-taps, after the scroll has seen the report.

@@ -32,6 +32,11 @@ fn golden(touches: &[[u8; 8]]) -> Vec<u8> {
     b
 }
 
+/// A fast two-finger flick toward the user: 80 units every 12 ms (6667 units/s), then lift.
+fn flick() -> Script {
+    pair_stroke(Script::default(), 0.0, 16, (0, 80), (0, -1200)).lift(204.0)
+}
+
 /// Every fixture, by file name.
 pub fn all() -> Vec<(&'static str, Vec<Record>)> {
     let s = Script::default;
@@ -156,6 +161,15 @@ pub fn all() -> Vec<(&'static str, Vec<Record>)> {
         ("click_during_scroll", click_during_scroll()),
         ("palm_during_scroll", palm_during_scroll()),
         ("mouse_moving", mouse_moving()),
+        ("flick_two_vertical", flick()),
+        (
+            "flick_then_touch",
+            flick()
+                .frames(400.0, 12.0, 10, |_| {
+                    vec![finger(1, -200, 0), finger(2, 200, 0)]
+                })
+                .lift(532.0),
+        ),
     ];
     fixtures.into_iter().map(|(n, s)| (n, s.records)).collect()
 }

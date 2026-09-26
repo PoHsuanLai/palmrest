@@ -1,6 +1,7 @@
 //! The axis-lock rule and its parameters (11.3.9, 12.5): which axis a stroke's accumulated
 //! motion locks to, if any.
 
+use super::curve::CurveParams;
 use std::time::Duration;
 
 /// The lock's tunables, resolved from the config into the units the arithmetic uses.
@@ -13,6 +14,7 @@ pub struct LockParams {
     pub velocity_gain_max: f64,
     pub repeat_gain_max: f64,
     pub detent_px: f64,
+    pub curve: CurveParams,
 }
 
 /// The lock decision.
@@ -59,6 +61,7 @@ mod tests {
         velocity_gain_max: 2.0,
         repeat_gain_max: 1.0,
         detent_px: 60.0,
+        curve: CurveParams::Current,
     };
 
     #[test]

@@ -10,7 +10,7 @@ mod support;
 
 use palmrest::action::{Action, Desktop, Effect, plan};
 use palmrest::config::{Config, Count, ForeignOutput, Fraction, Rejection};
-use palmrest::feel::{AxisLock, Hold, LockEvent, LockParams, Sample, WheelDelta};
+use palmrest::feel::{AxisLock, CurveParams, Hold, LockEvent, LockParams, Sample, WheelDelta};
 use palmrest::gestures::{FingerDirection, SwipeEvent, SwipeG};
 use palmrest::replay::{Timing, outs, replay};
 use palmrest::touch::{Point, TouchId};
@@ -34,6 +34,7 @@ const PARAMS: LockParams = LockParams {
     velocity_gain_max: 2.0,
     repeat_gain_max: 1.0,
     detent_px: 60.0,
+    curve: CurveParams::Current,
 };
 
 /// `drag(filt, points, start=10.0, step=0.008)`: the summed hi-res (h, v) in Python's frame.

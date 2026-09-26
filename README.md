@@ -108,14 +108,40 @@ daemon's variables (`SCROLL_SPEED`, `SCROLL_LOCK_RATIO`, `SCROLL_LOCK_TIMEOUT`,
 `SCROLL_LOCK_THRESHOLD`, `SCROLL_VELOCITY_GAIN_MAX`, `SCROLL_ACCEL_MAX`, `SWIPE_THRESHOLD`,
 `SWIPE_VERTICAL_MAX`, `SWIPE_COOLDOWN`) override the file, for parity runs.
 
+Two opt-in presets, both off by default (FINDINGS F22-F24):
+
+```toml
+foreign_momentum = "ours"   # palmrest glides foreign apps after a flick (default "toolkit")
+[feel]
+curve = "mac_like"          # precise when slow, power-law gain when fast (default "current")
+```
+
 ## Tools
 
 ```bash
 palmrest record FILE [SECONDS]              # raw reads + monotonic times
 palmrest replay FILE                        # the outputs a recording produces, one JSON line each
 palmrest replay FILE --latency              # decode-to-bytes latency percentiles
+palmrest replay FILE --curve mac-like       # cumulative px and peak gain under both curves
 PALMREST_ALLOW_UINPUT_PROBE=1 palmrest --check-uinput
 ```
+
+## Manual checks
+
+Waiting for the user and the device (F1 has the core's list: items 8, 9, 10 live, 11 live,
+12). Added by the feel presets:
+
+- **Curve bake-off (F22):** record real sessions (`palmrest record`), compare them with
+  `palmrest replay FILE --curve mac-like`, then scroll with `feel.curve = "mac_like"` and tune
+  the four `feel.mac_like_*` keys.
+- **Synthesized momentum, touchpad (F23, F24):** with `foreign_output = "touchpad"` and
+  `foreign_momentum = "ours"`, `libinput debug-events` on "palmrest touchpad" during a flick
+  shows the moves continue after the fingers lift and end with one lift at ~1 px/s; in a GTK4
+  and a Qt app, check that no second fling follows the glide, what a re-land looks like, and
+  whether a touch mid-glide stops dead or starts a short toolkit fling.
+- **Synthesized momentum, wheel (F23):** under KDE with `foreign_output = "wheel"`, a flick
+  glides in Dolphin, Firefox and Konsole, and a touch stops it.
+- **Suppression (F23):** hovering a shell-host surface mid-glide stops the glide.
 
 ## Tests
 

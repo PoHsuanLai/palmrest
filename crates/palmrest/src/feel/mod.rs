@@ -1,15 +1,21 @@
 //! The scroll feel shared by every output: axis lock, gains, px, wheel quantisation.
 
+pub mod curve;
 pub mod gain;
 pub mod lock;
+pub mod momentum;
 pub mod natural;
 pub mod quantize;
+pub mod release;
 pub mod rule;
 
-pub use gain::RepeatGain;
+pub use curve::{CurveParams, MacLike};
+pub use gain::{HI_RES_PER_DETENT, RepeatGain};
 pub use lock::{AxisLock, Hold, Lock, LockEvent, LockParams, Move, Sample};
+pub use momentum::Drag;
 pub use natural::{NaturalScroll, offset_delta};
-pub use quantize::{Quanta, Quantized, Quantizer, WheelDelta};
+pub use quantize::{Quanta, Quantized, Quantizer, UnitCarry, WheelDelta};
+pub use release::{ReleaseRule, Samples as ReleaseSamples};
 
 use crate::config::Config;
 
@@ -26,6 +32,7 @@ impl LockParams {
             velocity_gain_max: s.velocity_gain_max.ratio(),
             repeat_gain_max: s.repeat_gain_max.ratio(),
             detent_px: f64::from(s.detent_px.0),
+            curve: CurveParams::from_settings(&c.feel),
         }
     }
 }

@@ -61,3 +61,25 @@ pub enum ContactNibblePolicy {
     /// 3..=4 only, the kernel's "down".
     KernelOnly,
 }
+
+/// The scroll acceleration model (`feel.curve`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Curve {
+    /// The Python daemon's velocity and repeat gains, bit for bit.
+    #[default]
+    Current,
+    /// Precise below a finger speed, then a smooth power-law gain up to a cap (FINDINGS F22).
+    MacLike,
+}
+
+/// Who runs the glide after a flick on foreign clients (`foreign_momentum`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ForeignMomentum {
+    /// The toolkit: the virtual touchpad lifts at Ended and the app runs its own kinetic scroll.
+    #[default]
+    Toolkit,
+    /// palmrest: the contacts keep moving along the design/11 momentum curve, then lift.
+    Ours,
+}

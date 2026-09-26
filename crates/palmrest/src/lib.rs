@@ -5,6 +5,7 @@
 //! thread, socket, device and clock, and `sys` holds the only `unsafe`.
 
 pub mod action;
+pub mod compare;
 pub mod config;
 pub mod daemon;
 pub mod decode;

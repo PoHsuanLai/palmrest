@@ -135,3 +135,101 @@ the trigger; the model's formulas are in `gestures::live`. On COSMIC, `Workspace
 **F21. The Python daemon mis-reads 0xF7 doubles.** It never checks the report id, so a
 Bluetooth double would be parsed as one report of garbage. palmrest decodes both halves; if the
 mouse does send doubles, the two daemons differ there (the parity sessions contain none).
+
+## Feel presets (branch `feel-presets`)
+
+**F22. `feel.curve = "mac_like"`: the acceleration preset.** Opt-in; the default `current` is
+the Python feel through the untouched code path (the parity suite runs unchanged; the only
+edit to it is the new `curve: CurveParams::Current` field in `acceptance_3`'s literal
+`LockParams`). The shape is ours, fitted to the published *description* of the reference
+desktop's scroll acceleration (slow scrolling is pixel-precise, faster motion gains
+progressively, the gain saturates), not to its driver's table, which was neither read nor
+copied. One function of the sample's finger speed `v` (raw units/s, the velocity gain's own
+estimator: `|raw| / dt` for `0 < dt <= 50 ms`, else 0) replaces both Python gains:
+
+```
+g(v) = 1                                   v <= v0
+g(v) = min(g_max, 1 + ((v - v0) / s)^p)    v >  v0          px = base * raw * g(v)
+```
+
+`base` is the existing `detent_px / ((64 - speed) * 7)`, so "1:1" means the base ratio of
+`scroll.speed` and `scroll.detent_px`, and the speed slider still works under both curves.
+Monotone everywhere, continuous, and with `p > 1` its slope is continuous at `v0` (table and
+sweep tests in `feel/curve.rs`). The repeat gain is not applied under `mac_like`: the
+reference model has no per-stroke repeat divisor, and quick successive flicks are momentum's
+business (11.3.6 boost). Shipped constants: `v0 = 1500` (~21 mm/s along y at ~70.6 units/mm),
+`s = 3000`, `p = 1.6`, `g_max = 6.0` (reached at 9703 units/s): gain 1.33 at 3000, 2.0 at
+4500, 2.91 at 6000 units/s. On the synthesised fixtures `palmrest replay --curve mac-like`
+(defaults, no gestures.toml) gives: `parity_slow` 67.8 px at peak gain 1.000 against
+Current's 84.2 px at 1.655 (velocity x repeat); `flick_two_vertical` (6667 units/s) 829 px at
+3.39 against 490 px at 2.0; `parity_flicks` 282 px at 1.29 against 867 px at 4.6. The last is
+the repeat gain: quick successive strokes reach 2.3x under Current and nothing replaces that
+under `mac_like` except momentum, so repeated medium-speed flicks scroll a third as far. The
+numbers are a starting point for the user's
+bake-off on recorded sessions, not a measurement. New keys, for design/22 §3.9 (all
+proposed):
+
+| Key | Type | Default | Range |
+| --- | --- | --- | --- |
+| `feel.curve` | `Curve::{Current,MacLike}` | `current` | |
+| `feel.mac_like_threshold_units_s` | `Count` | `1500` | `0..20000` |
+| `feel.mac_like_scale_units_s` | `Count` | `3000` | `100..20000` |
+| `feel.mac_like_exponent` | `Fraction` | `1600` (1.6) | `1000..4000` |
+| `feel.mac_like_gain_max` | `Fraction` | `6000` (6.0) | `1000..20000` |
+
+**F23. `foreign_momentum = "ours"`: synthesized momentum for foreign apps.** Opt-in; the
+default `toolkit` is unchanged (lift at Ended, the app runs its own kinetic scroll). With
+`ours`, at a locked stroke's Ended palmrest takes the release velocity of the stroke's socket
+px (design/11 §11.5.2: least squares over the last 80 ms, >= 3 samples, 0 if the newest is
+older than 50 ms, no glide under 100 px/s, cap 12 000 px/s) and runs the design/11 §11.5.1
+drag (`v' = -a v^b`, a = 30, b = 0.7, stop 1 px/s; the same closed form as shell-host's
+engine, re-implemented in `feel/momentum.rs` since palmrest does not depend on shell-host).
+Note the stop speed is 1 px/**s** as design/11 has it: that is what gives the worked numbers
+(2000 px/s -> 501.5 px in 0.976 s, tested to 0.5 %; end to end through the pad and the wheel,
+within 5 % and one frame). Each frame (every `momentum.frame_ms`, driven by the reader's poll
+deadline, and by any report that arrives) sends the closed-form travel so far minus what was
+already sent, so a late wake sends one larger frame and the total never drifts.
+*Touchpad (O2):* the two contacts stay down and move; at the glide's end they lift at ~1 px/s,
+so a toolkit's own kinetic scroll starts from nothing. *Wheel (O4, the KDE choice of F7):* a
+decaying run of hi-res wheel frames, fractions carried (`UnitCarry`). *Touch to stop:* any
+MayBegin during a glide lifts the contacts in that report (wheel: the frames stop). A
+Cancelled, a claim (`PointerOver{Ours}`) or a disconnect end it too; a flick under a claim
+never starts one. `palmrest replay` now ticks the tracker at its deadlines between and after
+records, as the reader does, so glides and delayed lifts replay frame by frame (records keep
+one `Step` each; ticks add steps; every earlier test passed unchanged). Risk, unproven: the
+touch-to-stop lift happens at glide speed, and toolkits (GTK computes its kinetic velocity
+from the recent scroll deltas) may start a short fling of their own from it. New keys, for
+design/22 §3.9 (proposed; the design/11 values):
+
+| Key | Type | Default | Range |
+| --- | --- | --- | --- |
+| `foreign_momentum` | `ForeignMomentum::{Toolkit,Ours}` | `toolkit` | |
+| `momentum.a` | `Fraction` | `30000` (30) | `1000..65000` |
+| `momentum.b` | `Fraction` | `700` (0.7) | `100..950` (b < 1 or the glide never ends) |
+| `momentum.stop_px_s` | `Count` | `1` | `1..1000` |
+| `momentum.window_ms` | `Ms` | `80` | `20..200` |
+| `momentum.held_still_ms` | `Ms` | `50` | `10..200` |
+| `momentum.min_samples` | `Count` | `3` | `2..20` |
+| `momentum.start_px_s` | `Count` | `100` | `0..5000` |
+| `momentum.cap_px_s` | `Count` | `12000` | `100..60000` |
+| `momentum.frame_ms` | `Ms` | `8` | `1..50` |
+
+(`momentum.*` duplicates sill's `scroll.momentum_*` keys for shell-host; the two should be
+one table in design/22 if the Settings app is to keep them in step. The 11.3.6 boost is not
+synthesized.)
+
+**F24. Re-landing during a glide is two gestures to a toolkit.** A 2000 px/s glide at
+0.25 mm/px is ~5000 pad units against 1200 from the centre to the edge margin, so it re-lands
+about four times (F8). The re-land is a Lift frame and a Land frame at the same instant, with
+no stop of our own (no hold, no slow-down), then that frame's move from the centre. It cannot
+be one gesture through libinput: the lift frame takes both tracking ids and `BTN_TOUCH` to 0,
+libinput ends the two-finger scroll there and sends the axis stop, and the new pair must pass
+libinput's scroll-start threshold before it scrolls again. So a toolkit sees scroll-stop at the
+glide's current speed (GTK and Qt may begin their own kinetic scroll, which the next scroll
+event cancels) and a new scroll, whose first millimetre or so libinput may swallow. Unproven
+without the device; the mitigations are those of F8 (a larger virtual pad, a smaller
+`mm_per_px`, landing opposite the motion, which would halve the re-lands). A tracking-id swap
+inside one `SYN_REPORT` might keep the finger count at two throughout; how libinput treats
+that is unknown and it is not attempted. Found on the way: the *stroke's* re-land (the core
+`Pad::moved`, used by `toolkit` too) drops the delta of the frame that crosses the margin; the
+glide adds it back after landing, the stroke path is left as it was.

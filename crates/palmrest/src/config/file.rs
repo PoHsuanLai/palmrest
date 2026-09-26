@@ -1,10 +1,10 @@
 //! The whole of `palmrest/gestures.toml`, parsed leniently.
 
-use super::enums::{ForeignOutput, Rejection};
+use super::enums::{ForeignMomentum, ForeignOutput, Rejection};
 use super::lenient::{Warning, field, section};
 use super::sections::{
-    GestureSettings, PalmRejectionSettings, ScrollSettings, SwipeSettings, TapSettings,
-    TouchpadSettings,
+    FeelSettings, GestureSettings, MomentumSettings, PalmRejectionSettings, ScrollSettings,
+    SwipeSettings, TapSettings, TouchpadSettings,
 };
 use serde::Serialize;
 use thiserror::Error;
@@ -18,7 +18,10 @@ pub struct Config {
     pub version: u16,
     pub rejection: Rejection,
     pub foreign_output: ForeignOutput,
+    pub foreign_momentum: ForeignMomentum,
     pub scroll: ScrollSettings,
+    pub feel: FeelSettings,
+    pub momentum: MomentumSettings,
     pub swipe: SwipeSettings,
     pub tap: TapSettings,
     pub gestures: GestureSettings,
@@ -32,7 +35,10 @@ impl Default for Config {
             version: CONFIG_VERSION,
             rejection: Rejection::On,
             foreign_output: ForeignOutput::Touchpad,
+            foreign_momentum: ForeignMomentum::Toolkit,
             scroll: ScrollSettings::default(),
+            feel: FeelSettings::default(),
+            momentum: MomentumSettings::default(),
             swipe: SwipeSettings::default(),
             tap: TapSettings::default(),
             gestures: GestureSettings::default(),
@@ -57,6 +63,8 @@ crate::serde_settings!(
     super::units::Units,
     Rejection,
     ForeignOutput,
+    ForeignMomentum,
+    super::enums::Curve,
     super::enums::WorkspaceMode,
     super::enums::SwipeRepeat,
     super::enums::G4Mode,
@@ -76,7 +84,10 @@ pub fn parse(text: &str) -> Result<(Config, Vec<Warning>), ParseError> {
         version: field(&root, "", "version", d.version, w),
         rejection: field(&root, "", "rejection", d.rejection, w),
         foreign_output: field(&root, "", "foreign_output", d.foreign_output, w),
+        foreign_momentum: field(&root, "", "foreign_momentum", d.foreign_momentum, w),
         scroll: ScrollSettings::from_table(&section(&root, "", "scroll", w), "scroll", w),
+        feel: FeelSettings::from_table(&section(&root, "", "feel", w), "feel", w),
+        momentum: MomentumSettings::from_table(&section(&root, "", "momentum", w), "momentum", w),
         swipe: SwipeSettings::from_table(&section(&root, "", "swipe", w), "swipe", w),
         tap: TapSettings::from_table(&section(&root, "", "tap", w), "tap", w),
         gestures: GestureSettings::from_table(&section(&root, "", "gestures", w), "gestures", w),
@@ -140,6 +151,22 @@ mod tests {
         let (c, warn) = parse("scroll = 3\n").unwrap();
         assert_eq!(c.scroll, ScrollSettings::default());
         assert_eq!(warn[0].key, "scroll");
+    }
+
+    #[test]
+    fn the_presets_are_opt_in_keys() {
+        use crate::config::{Curve, ForeignMomentum};
+        let d = Config::default();
+        assert_eq!(d.feel.curve, Curve::Current);
+        assert_eq!(d.foreign_momentum, ForeignMomentum::Toolkit);
+        let text = "foreign_momentum = \"ours\"\n[feel]\ncurve = \"mac_like\"\nmac_like_gain_max = 4000\n[momentum]\nb = 1000\n";
+        let (c, warn) = parse(text).unwrap();
+        assert_eq!(c.feel.curve, Curve::MacLike);
+        assert_eq!(c.feel.mac_like_gain_max, Fraction(4000));
+        assert_eq!(c.foreign_momentum, ForeignMomentum::Ours);
+        assert_eq!(c.momentum.b, Fraction(700), "b = 1 has no finite glide");
+        let keys: Vec<&str> = warn.iter().map(|w| w.key.as_str()).collect();
+        assert_eq!(keys, ["momentum.b"]);
     }
 
     #[test]
