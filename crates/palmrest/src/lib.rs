@@ -6,6 +6,7 @@
 
 pub mod action;
 pub mod config;
+pub mod daemon;
 pub mod decode;
 pub mod encode;
 pub mod feel;
