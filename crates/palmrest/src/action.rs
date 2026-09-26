@@ -73,10 +73,7 @@ impl Setting for ActionMap {
         match v {
             Value::Table(t) => Some(Self::from_table(t, key, warn)),
             _ => {
-                warn.push(Warning {
-                    key: key.to_owned(),
-                    problem: "is not a table".to_owned(),
-                });
+                warn.push(Warning::unusable(key, "is not a table"));
                 None
             }
         }

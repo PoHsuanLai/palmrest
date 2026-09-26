@@ -1,14 +1,15 @@
 //! G6/G7: one- and two-finger double-taps (12.4 "Tap").
 //!
 //! A tap is a touchdown whose peak contact count is 1 or 2, that lifts completely within
-//! `tap.max_ms`, in which no contact moves `tap.max_move_units`, with no click. A double-tap is
-//! a second tap of the same count landing within `tap.gap_ms` of the first lifting and within
-//! `tap.centroid_max_units` of where it was. Taps never scroll: their motion stays under the
+//! `tap.max_ms`, in which no contact moves out of the `tap.max_move_*_um` ellipse, with no
+//! click. A double-tap is a second tap of the same count landing within `tap.gap_ms` of the
+//! first lifting and inside the `tap.centroid_max_*_um` ellipse around where it was. Taps never scroll: their motion stays under the
 //! lock threshold.
 
 use crate::config::Config;
 use crate::feel::{Hold, Sample};
 use crate::protocol::TapKind;
+use crate::sensor::lattice::Ellipse;
 use crate::time::Mono;
 use crate::touch::Point;
 
@@ -106,7 +107,8 @@ fn lift(first: Option<Gap>, td: Touchdown, now: Mono, cfg: &Config) -> (TapG, Op
     let second = first.filter(|g| {
         g.fingers == td.peak
             && td.since.since(g.lifted) <= cfg.tap.gap_ms.duration()
-            && td.centroid.delta_from(g.origin).length() <= f64::from(cfg.tap.centroid_max_units.0)
+            && Ellipse::of(cfg.tap.centroid_max_x_um, cfg.tap.centroid_max_y_um)
+                .contains(td.centroid.delta_from(g.origin))
     });
     match (second, td.peak) {
         (Some(_), 1) => (TapG::Idle, Some(TapKind::One)),
@@ -155,13 +157,14 @@ impl Touchdown {
             self.centroid = centroid(contacts);
         }
         self.count = n;
+        let max_move = Ellipse::of(cfg.tap.max_move_x_um, cfg.tap.max_move_y_um);
         let moved = contacts.iter().any(|c| {
             let o = self
                 .origins
                 .iter()
                 .find(|o| o.id == c.id)
                 .map_or(c.at, |o| o.at);
-            c.at.delta_from(o).length() >= f64::from(cfg.tap.max_move_units.0)
+            max_move.reached(c.at.delta_from(o))
         });
         let late = now.since(self.since) > cfg.tap.max_ms.duration();
         if moved || late || regrew || hold == Hold::Held || self.peak > 2 {

@@ -4,14 +4,21 @@
 //! toward the contact set the gestures see. Palm and Resting are for life: a thumb resting on
 //! the side stays rejected even if it later shuffles.
 
+use super::bands::Bands;
 use crate::config::{Config, ContactNibblePolicy, Rejection};
 use crate::feel::Sample;
+use crate::sensor::lattice::{self, Ellipse};
+use crate::sensor::{FrameContact, Shape};
 use crate::time::Mono;
-use crate::touch::{Point, RawTouch, TouchId, TouchState};
+use crate::touch::{Point, TouchId, TouchState};
 
-/// The kernel's y span, used to place the rear band (R16).
-pub const Y_MIN: i32 = -1589;
-pub const Y_MAX: i32 = 2047;
+/// A frame contact on the grid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Touch {
+    id: TouchId,
+    at: Point,
+    shape: Shape,
+}
 
 /// How a contact is treated.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -58,15 +65,20 @@ pub struct Seen {
     pub palm: PalmTurn,
 }
 
-/// Whether the report's state nibble makes this touch a contact at all (12.3.2).
-pub fn is_contact(t: &RawTouch, policy: ContactNibblePolicy) -> bool {
+/// Whether the frame's state makes this touch a contact at all (12.3.2): the state nibble, and
+/// on the Magic Mouse a non-zero size.
+pub fn is_contact(t: &FrameContact, policy: ContactNibblePolicy) -> bool {
     let counted = match policy {
         ContactNibblePolicy::PythonParity => (1..=4).contains(&t.state.nibble()),
         ContactNibblePolicy::KernelOnly => {
             matches!(t.state, TouchState::MakeTouch | TouchState::Touching)
         }
     };
-    counted && t.size > 0
+    let sized = match t.shape {
+        Shape::MagicMouse(m) => m.size > 0,
+        Shape::Unmeasured => true,
+    };
+    counted && sized
 }
 
 impl Contacts {
@@ -75,17 +87,28 @@ impl Contacts {
         &self.set
     }
 
-    /// Consumes one report's touches.
-    pub fn step(self, touches: &[RawTouch], now: Mono, cfg: &Config) -> (Self, Seen) {
-        let live: Vec<&RawTouch> = touches
+    /// Consumes one frame's contacts, with the bands of the surface they are on.
+    pub fn step(
+        self,
+        touches: &[FrameContact],
+        now: Mono,
+        cfg: &Config,
+        bands: &Bands,
+    ) -> (Self, Seen) {
+        let live: Vec<Touch> = touches
             .iter()
             .filter(|t| is_contact(t, cfg.gestures.contact_nibble_policy))
+            .map(|t| Touch {
+                id: t.id,
+                at: lattice::point(t.at),
+                shape: t.shape,
+            })
             .collect();
         let tracks: Vec<Track> = live
             .iter()
             .map(|t| match self.tracks.iter().find(|k| k.id == t.id) {
                 Some(k) => advance(*k, t, now, cfg),
-                None => land(t, now, cfg),
+                None => land(t, now, cfg, bands),
             })
             .collect();
         let counted = |k: &Track| match k.class {
@@ -112,7 +135,7 @@ impl Contacts {
     }
 }
 
-fn land(t: &RawTouch, now: Mono, cfg: &Config) -> Track {
+fn land(t: &Touch, now: Mono, cfg: &Config, bands: &Bands) -> Track {
     let k = Track {
         id: t.id,
         landed: now,
@@ -123,13 +146,13 @@ fn land(t: &RawTouch, now: Mono, cfg: &Config) -> Track {
     let class = match cfg.rejection {
         Rejection::Off => Contact::Firm,
         Rejection::On if is_palm(t, cfg) => Contact::Palm,
-        Rejection::On if in_band(t.at, cfg) => Contact::Watched,
+        Rejection::On if bands.contains(t.at) => Contact::Watched,
         Rejection::On => by_size(t, cfg),
     };
     Track { class, ..k }
 }
 
-fn advance(k: Track, t: &RawTouch, now: Mono, cfg: &Config) -> Track {
+fn advance(k: Track, t: &Touch, now: Mono, cfg: &Config) -> Track {
     let k = Track { at: t.at, ..k };
     let class = match (cfg.rejection, k.class) {
         (Rejection::Off, _) => Contact::Firm,
@@ -142,10 +165,10 @@ fn advance(k: Track, t: &RawTouch, now: Mono, cfg: &Config) -> Track {
 }
 
 /// P2: a watched contact that moves far enough is a finger; one that sits out its window rests.
-fn watched(k: Track, t: &RawTouch, now: Mono, cfg: &Config) -> Contact {
+fn watched(k: Track, t: &Touch, now: Mono, cfg: &Config) -> Contact {
     let p = &cfg.palm_rejection;
-    let moved = k.at.delta_from(k.origin).length();
-    if moved >= f64::from(p.resting_move_floor_units.0) {
+    let floor = Ellipse::of(p.resting_move_floor_x_um, p.resting_move_floor_y_um);
+    if floor.reached(k.at.delta_from(k.origin)) {
         by_size(t, cfg)
     } else if now.since(k.landed) >= p.resting_window_ms.duration() {
         Contact::Resting
@@ -154,51 +177,62 @@ fn watched(k: Track, t: &RawTouch, now: Mono, cfg: &Config) -> Contact {
     }
 }
 
-fn by_size(t: &RawTouch, cfg: &Config) -> Contact {
-    if i32::from(t.size) < cfg.palm_rejection.light_touch_size_max.0 {
-        Contact::Light
-    } else {
-        Contact::Firm
+/// P1 on the Magic Mouse's size; a sensor without one reports firm touches only.
+fn by_size(t: &Touch, cfg: &Config) -> Contact {
+    match t.shape {
+        Shape::MagicMouse(m) if i32::from(m.size) < cfg.palm_rejection.light_touch_size_max.0 => {
+            Contact::Light
+        }
+        Shape::MagicMouse(_) | Shape::Unmeasured => Contact::Firm,
     }
 }
 
-fn is_palm(t: &RawTouch, cfg: &Config) -> bool {
-    i32::from(t.major) >= cfg.palm_rejection.large_contact_major_units.0
-}
-
-/// P2's bands: the two sides and the rear (the +y end, toward the palm).
-pub fn in_band(at: Point, cfg: &Config) -> bool {
-    let p = &cfg.palm_rejection;
-    let rear_from = f64::from(Y_MAX) - p.rear_band_percent.share() * f64::from(Y_MAX - Y_MIN);
-    at.x < p.side_band_x_min.0 || at.x > p.side_band_x_max.0 || f64::from(at.y) > rear_from
+/// P3 on the Magic Mouse's major axis; a sensor without one never sees a palm.
+fn is_palm(t: &Touch, cfg: &Config) -> bool {
+    match t.shape {
+        Shape::MagicMouse(m) => {
+            i32::from(m.major) >= cfg.palm_rejection.large_contact_major_units.0
+        }
+        Shape::Unmeasured => false,
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn raw(id: u8, x: i32, y: i32, size: u8, major: u8) -> RawTouch {
-        RawTouch {
+    use crate::sensor::MagicShape;
+    use crate::sensor::magic_mouse::{self, RESOLUTION};
+
+    fn raw(id: u8, x: i32, y: i32, size: u8, major: u8) -> FrameContact {
+        FrameContact {
             id: TouchId(id),
-            at: Point::new(x, y),
-            major,
-            minor: 20,
-            size,
-            orientation: 0,
+            at: RESOLUTION.point(x, y),
             state: TouchState::Touching,
+            shape: Shape::MagicMouse(MagicShape {
+                major,
+                minor: 20,
+                size,
+                orientation: 0,
+            }),
         }
+    }
+
+    fn bands(cfg: &Config) -> Bands {
+        Bands::resolve(&cfg.palm_rejection, &magic_mouse::surface())
     }
 
     fn ids(seen: &Seen) -> Vec<u8> {
         seen.samples.iter().map(|s| s.id.0).collect()
     }
 
-    fn run(cfg: &Config, frames: &[(u64, Vec<RawTouch>)]) -> Vec<Vec<u8>> {
+    fn run(cfg: &Config, frames: &[(u64, Vec<FrameContact>)]) -> Vec<Vec<u8>> {
         let mut c = Contacts::default();
+        let b = bands(cfg);
         frames
             .iter()
             .map(|(ms, t)| {
-                let (n, seen) = c.clone().step(t, Mono::from_millis(*ms), cfg);
+                let (n, seen) = c.clone().step(t, Mono::from_millis(*ms), cfg, &b);
                 c = n;
                 ids(&seen)
             })
@@ -231,11 +265,26 @@ mod tests {
             );
         }
         t.state = TouchState::Touching;
-        t.size = 0;
+        t.shape = Shape::MagicMouse(MagicShape {
+            size: 0,
+            ..shape(&t)
+        });
         assert!(
             !is_contact(&t, ContactNibblePolicy::PythonParity),
             "size 0 is not a contact"
         );
+        t.shape = Shape::Unmeasured;
+        assert!(
+            is_contact(&t, ContactNibblePolicy::KernelOnly),
+            "an unmeasured touch is a contact"
+        );
+    }
+
+    fn shape(t: &FrameContact) -> MagicShape {
+        match t.shape {
+            Shape::MagicMouse(m) => m,
+            Shape::Unmeasured => panic!("a Magic Mouse touch"),
+        }
     }
 
     #[test]
@@ -288,13 +337,14 @@ mod tests {
     #[test]
     fn palm_is_rejected_and_reported_when_it_was_counted() {
         let cfg = Config::default();
+        let b = bands(&cfg);
         let mut c = Contacts::default();
-        let (n, _) = c.step(&[raw(1, 0, 0, 12, 20)], Mono(0), &cfg);
+        let (n, _) = c.step(&[raw(1, 0, 0, 12, 20)], Mono(0), &cfg, &b);
         c = n;
-        let (n, seen) = c.step(&[raw(1, 0, 0, 12, 70)], Mono::from_millis(10), &cfg);
+        let (n, seen) = c.step(&[raw(1, 0, 0, 12, 70)], Mono::from_millis(10), &cfg, &b);
         assert_eq!(seen.palm, PalmTurn::InSet);
         assert!(seen.samples.is_empty());
-        let (_, seen) = n.step(&[raw(1, 0, 0, 12, 20)], Mono::from_millis(20), &cfg);
+        let (_, seen) = n.step(&[raw(1, 0, 0, 12, 20)], Mono::from_millis(20), &cfg, &b);
         assert!(seen.samples.is_empty(), "palm for life");
         assert_eq!(seen.palm, PalmTurn::None, "reported once");
     }
@@ -313,19 +363,13 @@ mod tests {
     }
 
     #[test]
-    fn band_edges() {
+    fn a_sensor_without_shape_counts_firm_and_never_palm() {
         let cfg = Config::default();
-        const CASES: &[(i32, i32, bool)] = &[
-            (-900, 0, false),
-            (-901, 0, true),
-            (1060, 0, false),
-            (1061, 0, true),
-            (0, 1501, false),
-            (0, 1502, true),
-            (0, -1589, false),
-        ];
-        for &(x, y, want) in CASES {
-            assert_eq!(in_band(Point::new(x, y), &cfg), want, "({x}, {y})");
-        }
+        let bare = |id: u8, x: i32| FrameContact {
+            shape: Shape::Unmeasured,
+            ..raw(id, x, 0, 0, 0)
+        };
+        let got = run(&cfg, &[(0, vec![bare(1, 0), bare(2, 300)])]);
+        assert_eq!(got, [vec![1, 2]]);
     }
 }

@@ -4,6 +4,7 @@
 //! are pages: progress `p = sum(dx) / D`, velocity in pages per second.
 
 use crate::config::GestureSettings;
+use crate::sensor::lattice::{Along, units};
 use std::time::Duration;
 
 /// The base finish velocity (R10: 0.002/ms).
@@ -103,7 +104,7 @@ impl LiveParams {
     /// The live workspace model's parameters.
     pub fn workspace(g: &GestureSettings) -> Self {
         Self {
-            d_units: f64::from(g.live_workspace_d_units.0),
+            d_units: f64::from(units(g.live_workspace_d_um, Along::X)),
             overshoot_scale: g.live_workspace_overshoot_scale.ratio(),
             overshoot_cap: g.live_workspace_overshoot_cap.ratio(),
             velocity_window: g.live_workspace_velocity_window_ms.duration(),

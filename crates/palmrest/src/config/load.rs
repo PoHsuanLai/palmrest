@@ -63,10 +63,7 @@ pub fn load(dir: Option<&Path>, lookup: impl Fn(&str) -> Option<String>) -> Load
 }
 
 fn whole_file(p: &Path, problem: String) -> Warning {
-    Warning {
-        key: p.display().to_string(),
-        problem,
-    }
+    Warning::unusable(p.display().to_string(), problem)
 }
 
 #[cfg(test)]

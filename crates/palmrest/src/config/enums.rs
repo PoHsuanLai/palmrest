@@ -83,3 +83,15 @@ pub enum ForeignMomentum {
     /// palmrest: the contacts keep moving along the design/11 momentum curve, then lift.
     Ours,
 }
+
+/// Where touches come from (`device.source`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceSource {
+    /// The Magic Mouse's hidraw node, decoded by palmrest (`MagicMouseHid`).
+    #[default]
+    Hidraw,
+    /// A mouse's evdev node through its kernel multitouch driver (`EvdevMultitouch`). Untested
+    /// on anything but the Magic Mouse.
+    Evdev,
+}

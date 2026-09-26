@@ -7,6 +7,7 @@
 use super::swipe::FingerDirection;
 use crate::config::Config;
 use crate::feel::{Hold, Lock, Sample};
+use crate::sensor::lattice::{Along, units};
 use crate::time::Mono;
 use crate::touch::{Point, TouchId};
 
@@ -94,7 +95,7 @@ fn judge(s: &Stroke, lift: Mono, cfg: &Config) -> Option<FingerDirection> {
     let g = &cfg.gestures;
     let locked_at = s.locked_at?;
     let travel = s.at.delta_from(s.origin);
-    let far = travel.x.abs() >= g.g4_travel_units.0;
+    let far = travel.x.abs() >= units(g.g4_travel_um, Along::X);
     let quick = lift.since(locked_at) <= g.g4_max_duration_ms.duration();
     let straight = f64::from(travel.x.abs()) >= g.g4_axis_ratio.ratio() * f64::from(travel.y.abs());
     let moving = lift.since(s.last_motion) <= g.g4_settle_ms.duration();

@@ -10,7 +10,9 @@ mod support;
 
 use palmrest::action::{Action, Desktop, Effect, plan};
 use palmrest::config::{Config, Count, ForeignOutput, Fraction, Rejection};
-use palmrest::feel::{AxisLock, CurveParams, Hold, LockEvent, LockParams, Sample, WheelDelta};
+use palmrest::feel::{
+    AxisLock, CurveParams, Hold, LockEvent, LockParams, Sample, Threshold, WheelDelta,
+};
 use palmrest::gestures::{FingerDirection, SwipeEvent, SwipeG};
 use palmrest::replay::{Timing, outs, replay};
 use palmrest::touch::{Point, TouchId};
@@ -27,7 +29,7 @@ fn touch(x: i32, y: i32, id: u8) -> Sample {
 
 /// `ScrollAxisLock(speed=32, acceleration_max=1.0, lock_threshold=40)`.
 const PARAMS: LockParams = LockParams {
-    threshold: 40,
+    threshold: Threshold::both(40),
     ratio: 1.5,
     timeout: Duration::from_millis(250),
     speed: 32,
