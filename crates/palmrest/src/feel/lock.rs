@@ -8,42 +8,16 @@
 
 use super::gain::{HI_RES_PER_DETENT, RepeatGain, raw_per_hi_res, velocity_gain};
 use super::quantize::{Quanta, Quantizer};
+pub use super::rule::{Lock, LockParams, decide};
 use crate::protocol::Axis;
 use crate::time::Mono;
 use crate::touch::{Point, TouchId};
-use std::time::Duration;
-
-/// The lock's tunables, resolved from the config into the units the arithmetic uses.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct LockParams {
-    pub threshold: i32,
-    pub ratio: f64,
-    pub timeout: Duration,
-    pub speed: u16,
-    pub velocity_gain_max: f64,
-    pub repeat_gain_max: f64,
-    pub detent_px: f64,
-}
 
 /// A contact the lock follows: its id and where it is now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Sample {
     pub id: TouchId,
     pub at: Point,
-}
-
-/// The lock decision.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Lock {
-    /// Not locked yet: motion accumulates here.
-    Free {
-        pend_x: i32,
-        pend_y: i32,
-    },
-    X,
-    Y,
-    /// Two fingers moved sideways: no scroll until the lock times out.
-    Blocked,
 }
 
 /// Whether a physical click is holding gestures off (P4).
@@ -305,27 +279,10 @@ impl AxisLock {
     }
 }
 
-/// The lock rule: X first, then Y; two fingers on X are Blocked.
-pub fn decide(x: i32, y: i32, fingers: usize, p: &LockParams) -> Option<Lock> {
-    let (ax, ay) = (f64::from(x.abs()), f64::from(y.abs()));
-    let t = f64::from(p.threshold.max(1));
-    let lock = if ax >= t && ax >= ay * p.ratio {
-        Lock::X
-    } else if ay >= t && ay >= ax * p.ratio {
-        Lock::Y
-    } else {
-        return None;
-    };
-    Some(if lock == Lock::X && fingers > 1 {
-        Lock::Blocked
-    } else {
-        lock
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     pub(crate) const PARAMS: LockParams = LockParams {
         threshold: 40,
@@ -350,23 +307,6 @@ mod tests {
             all.extend(ev);
             (l, all)
         })
-    }
-
-    #[test]
-    fn decide_table() {
-        const CASES: &[(i32, i32, usize, Option<Lock>)] = &[
-            (39, 0, 1, None),
-            (40, 0, 1, Some(Lock::X)),
-            (-40, 26, 1, Some(Lock::X)),
-            (-40, 27, 1, None),
-            (0, -40, 1, Some(Lock::Y)),
-            (26, 40, 1, Some(Lock::Y)),
-            (40, 0, 2, Some(Lock::Blocked)),
-            (0, 40, 2, Some(Lock::Y)),
-        ];
-        for &(x, y, n, want) in CASES {
-            assert_eq!(decide(x, y, n, &PARAMS), want, "({x}, {y}) x{n}");
-        }
     }
 
     #[test]

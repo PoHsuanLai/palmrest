@@ -2,7 +2,10 @@
 //! reading outputs back.
 #![allow(dead_code)]
 
+mod python_points;
 pub mod scenarios;
+mod sessions;
+mod strokes;
 
 use palmrest::encode::encode;
 use palmrest::recording::{self, Record};

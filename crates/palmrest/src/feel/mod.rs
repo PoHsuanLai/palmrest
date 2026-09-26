@@ -4,6 +4,7 @@ pub mod gain;
 pub mod lock;
 pub mod natural;
 pub mod quantize;
+pub mod rule;
 
 pub use gain::RepeatGain;
 pub use lock::{AxisLock, Hold, Lock, LockEvent, LockParams, Move, Sample};

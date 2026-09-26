@@ -1,5 +1,6 @@
-//! Acceptance 12.8 items 4-7 with the shipped configuration (rejection on, touchpad output):
-//! the workspace swipe trigger, the double-taps, the one-finger swipe, and rejection.
+//! Acceptance 12.8 items 4-7, and the replay half of 10, with the shipped configuration
+//! (rejection on, touchpad output): swipe trigger, double-taps, one-finger swipe, rejection,
+//! suppression.
 
 mod support;
 
@@ -299,4 +300,64 @@ fn touches_down_and_up_alternate() {
             .collect();
         assert!(t.windows(2).all(|w| w[0] != w[1]), "{name}: {t:?}");
     }
+}
+
+// ---- 10 (replay half). Suppression -------------------------------------------------------
+
+#[test]
+fn a_claimed_pointer_silences_every_foreign_output() {
+    use palmrest::config::ForeignOutput;
+    for name in ["g4_fast", "parity_fast", "click_during_scroll"] {
+        let free = run(name);
+        assert!(
+            free.iter().any(|o| matches!(o, Out::Pad(_))),
+            "{name}: the touchpad is used when nobody claims"
+        );
+        let claimed = run_claimed(name);
+        assert!(
+            !claimed
+                .iter()
+                .any(|o| matches!(o, Out::Pad(_) | Out::Wheel(_) | Out::Key(_))),
+            "{name}"
+        );
+        assert_eq!(
+            support::scrolls(&claimed),
+            support::scrolls(&free),
+            "{name}: the socket stream is unchanged"
+        );
+    }
+    // The wheel output is silenced the same way.
+    let wheel = Config {
+        foreign_output: ForeignOutput::Wheel,
+        ..Config::default()
+    };
+    let (mut t, _) = Tracker::new(wheel.clone()).claim(Over::Ours);
+    let mut all = Vec::new();
+    for r in &support::load("parity_fast") {
+        let (nt, _, step) = feed(t, StampClock::new(), r, Timing::Arrival);
+        t = nt;
+        all.extend(step.outs);
+    }
+    assert!(!all.iter().any(|o| matches!(o, Out::Wheel(_))));
+    assert!(
+        outs(&replay(
+            &support::load("parity_fast"),
+            wheel,
+            Timing::Arrival
+        ))
+        .iter()
+        .any(|o| matches!(o, Out::Wheel(_)))
+    );
+}
+
+#[test]
+fn claiming_mid_stroke_lifts_the_touchpad() {
+    let records = support::load("g4_slow");
+    let (mut t, mut clock) = (Tracker::new(Config::default()), StampClock::new());
+    for r in &records[..31] {
+        let (nt, nc, _) = feed(t, clock, r, Timing::Arrival);
+        (t, clock) = (nt, nc);
+    }
+    let (_, lifted) = t.claim(Over::Ours);
+    assert_eq!(lifted, [Out::Pad(palmrest::outputs::pad::PadFrame::Lift)]);
 }
