@@ -33,6 +33,7 @@ pub const CENTRE: PadPoint = PadPoint {
 
 /// One frame for the virtual touchpad.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "v", rename_all = "snake_case")]
 pub enum PadFrame {
     /// `fingers` contacts land around `at`, `spacing` units apart horizontally.
     Land {

@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 /// One effect of a report, in the order it must happen.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "v", rename_all = "snake_case")]
 pub enum Out {
     /// A socket message for every subscriber (O1).
     Host(ToHost),
