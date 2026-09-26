@@ -1,0 +1,15 @@
+[package]
+name = "palmrest"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Magic Mouse gesture daemon: hidraw decoder, scroll feel, gestures, a socket for shell-host and a virtual touchpad for everyone else"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
