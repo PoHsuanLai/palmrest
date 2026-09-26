@@ -5,6 +5,7 @@ pub mod config;
 pub mod decode;
 pub mod encode;
 pub mod feel;
+pub mod gestures;
 pub mod keys;
 pub mod protocol;
 pub mod recording;
