@@ -1,19 +1,19 @@
-//! The reader thread: hidraw in, tracker, outputs out (12.3.12). One loop, no async runtime.
+//! The reader thread: the sensor's node in, tracker, outputs out (12.3.12). One loop, no async
+//! runtime.
 
 use super::devices::Devices;
-use super::discover::{self, Backoff, SYS_HIDRAW};
+use super::discover::Backoff;
 use super::dispatch::dispatch;
-use super::hidraw::{self, Access, Read};
+use super::hidraw::{self, Read};
 use super::socket::{SocketHandle, ToSocket};
+use super::source::{self, Opened, Purpose};
 use crate::action::Desktop;
 use crate::config::Loaded;
-use crate::protocol::{DeviceInfo, Over};
+use crate::protocol::Over;
 use crate::recording::Record;
-use crate::replay::{Timing, feed};
+use crate::replay::{Timing, feed_from};
 use crate::stamp::StampClock;
 use crate::tracker::{Out, Tracker};
-use rustix::fd::OwnedFd;
-use std::path::Path;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
@@ -33,23 +33,19 @@ pub struct Reader {
 }
 
 impl Reader {
-    /// Finds the mouse, reads it until it goes away, and starts over; never returns.
+    /// Finds the configured sensor, reads it until it goes away, and starts over; never
+    /// returns. `device.source` is read at each attempt, so a change applies at the next
+    /// reconnect.
     pub fn run(mut self) {
         let mut backoff = Backoff::DEVICE;
         loop {
             self = self.housekeeping();
-            match discover::find(Path::new(SYS_HIDRAW)) {
-                None => eprintln!("palmrest: Magic Mouse not found"),
-                Some((path, info)) => match hidraw::open(&path, Access::ReadWrite) {
-                    Err(e) => eprintln!(
-                        "palmrest: cannot read {}: {e}; no gestures until it can be read",
-                        path.display()
-                    ),
-                    Ok((fd, access)) => {
-                        backoff = Backoff::DEVICE;
-                        self = self.session(&fd, access, info);
-                    }
-                },
+            match source::open(self.tracker.config().device.source, Purpose::Run) {
+                Err(e) => eprintln!("palmrest: {e}"),
+                Ok(opened) => {
+                    backoff = Backoff::DEVICE;
+                    self = self.session(&opened);
+                }
             }
             let (delay, next) = backoff.step();
             backoff = next;
@@ -58,20 +54,12 @@ impl Reader {
         }
     }
 
-    fn session(mut self, fd: &OwnedFd, access: Access, info: DeviceInfo) -> Self {
-        match access {
-            Access::ReadWrite => {
-                if let Err(e) = hidraw::enable_multitouch(fd) {
-                    eprintln!("palmrest: enabling multitouch failed: {e}");
-                }
-            }
-            Access::ReadOnly => eprintln!(
-                "palmrest: {} is read-only; multitouch left as the kernel set it",
-                info.path
-            ),
-        }
+    fn session(mut self, opened: &Opened) -> Self {
+        let info = opened.info.clone();
         eprintln!("palmrest: connected: {} ({})", info.name, info.path);
         self.socket.send(ToSocket::Device(info));
+        let mut sensor = opened.sensor();
+        self.tracker = self.tracker.with_surface(sensor.surface());
         let mut clock = StampClock::new();
         let mut errors = 0;
         while errors < ERROR_THRESHOLD {
@@ -81,14 +69,20 @@ impl Reader {
                 .tracker
                 .deadline()
                 .map_or(IDLE_POLL, |d| d.since(now).min(IDLE_POLL));
-            match hidraw::read(fd, timeout) {
+            match hidraw::read_up_to(&opened.fd, timeout, opened.read_len) {
                 Read::Report(bytes) => {
                     errors = 0;
                     let record = Record {
                         at: hidraw::now(),
                         bytes,
                     };
-                    let (t, c, step) = feed(self.tracker, clock, &record, Timing::Calibrated);
+                    let (t, c, step) = feed_from(
+                        sensor.as_mut(),
+                        self.tracker,
+                        clock,
+                        &record,
+                        Timing::Calibrated,
+                    );
                     clock = c;
                     if let Some(e) = step.error {
                         eprintln!("palmrest: dropped a read: {e}");

@@ -91,6 +91,8 @@ settings_struct! {
         /// P3, on the Magic Mouse's own major axis units (other sensors have none).
         large_contact_major_units: Units = Units(64);
         click_guard_ms: Ms = Ms(200);
+        // TODO(untested): P5 is in the sensor's own mouse counts per second, so it means
+        // whatever another mouse's CPI makes it; only the Magic Mouse's counts are known.
         mouse_moving_threshold_counts_s: Count = Count(200);
         mouse_moving_window_ms: Ms = Ms(100);
         mouse_moving_lock_multiplier: Fraction = Fraction(2000);
@@ -117,7 +119,10 @@ settings_struct! {
 
 settings_struct! {
     /// `[feel]`: the acceleration curve and the `MacLike` shape's constants (FINDINGS F22).
-    /// Speeds are raw mouse units per second of one sample, as the velocity gain measures them.
+    /// Speeds are grid units per second of one sample (26/mm across, 70/mm along: the Magic
+    /// Mouse 2's raw units), as the velocity gain measures them. They shape the transfer
+    /// function rather than recognise a gesture, and are applied to whichever axis locked, so
+    /// they stay in grid units rather than becoming x/y millimetre pairs (FINDINGS F25).
     pub struct FeelSettings {
         curve: Curve = Curve::Current;
         mac_like_threshold_units_s: Count = Count(1500), in Count(0) => Count(20000);

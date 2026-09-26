@@ -1,4 +1,5 @@
-//! The mouse's hidraw node: opening it, enabling multitouch, reading one report.
+//! The mouse's hidraw node: opening it, enabling multitouch, reading one report. `read_up_to`
+//! also serves the evdev node, whose reads are runs of events.
 
 use crate::sys;
 use crate::time::Mono;
@@ -58,8 +59,13 @@ pub enum Read {
     Failed(String),
 }
 
-/// Waits up to `timeout` for one read.
+/// Waits up to `timeout` for one hidraw read.
 pub fn read(fd: &OwnedFd, timeout: Duration) -> Read {
+    read_up_to(fd, timeout, READ_LEN)
+}
+
+/// Waits up to `timeout` for one read of at most `len` bytes.
+pub fn read_up_to(fd: &OwnedFd, timeout: Duration, len: usize) -> Read {
     let ts = Timespec {
         tv_sec: timeout.as_secs() as i64,
         tv_nsec: i64::from(timeout.subsec_nanos()),
@@ -71,7 +77,7 @@ pub fn read(fd: &OwnedFd, timeout: Duration) -> Read {
         Err(e) if e == rustix::io::Errno::INTR => return Read::Timeout,
         Err(e) => return Read::Failed(e.to_string()),
     }
-    let mut buf = [0u8; READ_LEN];
+    let mut buf = vec![0u8; len];
     match rustix::io::read(fd, &mut buf) {
         Ok(0) => Read::Failed("end of file".to_owned()),
         Ok(n) => Read::Report(buf[..n].to_vec()),

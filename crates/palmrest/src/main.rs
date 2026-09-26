@@ -1,19 +1,20 @@
 //! The `palmrest` command: the daemon, and its record / replay / probe tools.
 
-use palmrest::compare::compare_curves;
+use palmrest::compare::compare_curves_from;
 use palmrest::config::{self, Config};
 use palmrest::daemon::{self, latency, record};
 use palmrest::outputs::uinput::{self, PROBE_PERMIT, ProbePermit};
 use palmrest::protocol;
 use palmrest::recording;
-use palmrest::replay::{Timing, replay};
+use palmrest::replay::{Timing, replay_from};
 use std::path::Path;
 use std::process::ExitCode;
 use std::time::Duration;
 
 const USAGE: &str = "usage:
   palmrest                         run the daemon
-  palmrest record FILE [SECONDS]   record raw reports (stops after 20 s of no touch)
+  palmrest record FILE [SECONDS]   record raw reads of the configured device.source
+                                   (stops after 20 s of no touch)
   palmrest replay FILE [--calibrated] [--latency]
                                    print the outputs a recording produces
   palmrest replay FILE [--calibrated] --curve mac-like
@@ -58,18 +59,24 @@ fn record_cmd(file: &str, total_secs: u64) -> Result<(), String> {
         idle: Duration::from_secs(20),
         total: Duration::from_secs(total_secs),
     };
-    let n = record::record(Path::new(file), limits)?;
+    let env = |k: &str| std::env::var(k).ok();
+    let source = config::load(config::config_dir(env).as_deref(), env)
+        .config
+        .device
+        .source;
+    let n = record::record(Path::new(file), source, limits)?;
     eprintln!("palmrest: recorded {n} reads");
     Ok(())
 }
 
 fn replay_cmd(file: &str, flags: &[&str]) -> Result<(), String> {
     let bytes = std::fs::read(file).map_err(|e| format!("{file}: {e}"))?;
-    let records = recording::parse(&bytes).map_err(|e| format!("{file}: {e}"))?;
+    let rec = recording::read(&bytes).map_err(|e| format!("{file}: {e}"))?;
+    let (source, records) = (rec.source, rec.records);
     let env = |k: &str| std::env::var(k).ok();
     let cfg = config::load(config::config_dir(env).as_deref(), env).config;
     if flags.contains(&"--latency") {
-        let r = latency::measure(&records, cfg);
+        let r = latency::measure_from(&source, &records, cfg);
         println!("reads {}", r.n);
         println!(
             "socket  p50 {:?} p95 {:?} p99 {:?} max {:?}",
@@ -89,12 +96,15 @@ fn replay_cmd(file: &str, flags: &[&str]) -> Result<(), String> {
     match flags.iter().position(|f| *f == "--curve") {
         None => {}
         Some(i) if flags.get(i + 1) == Some(&"mac-like") => {
-            print!("{}", compare_curves(&records, &cfg, timing).table());
+            print!(
+                "{}",
+                compare_curves_from(&source, &records, &cfg, timing).table()
+            );
             return Ok(());
         }
         Some(_) => return Err(USAGE.to_owned()),
     }
-    for step in replay(&records, cfg, timing) {
+    for step in replay_from(&source, &records, cfg, timing).1 {
         for o in step.outs {
             println!(
                 "{} {}",

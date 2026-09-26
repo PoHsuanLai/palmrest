@@ -58,7 +58,7 @@ impl Default for SwipeG {
 /// What one report produced.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SwipeEvent {
-    /// For the host: the pair's phase and this report's centroid dx in raw units.
+    /// For the host: the pair's phase and this report's centroid dx in grid units.
     Stream {
         gesture: GestureId,
         phase: Phase,

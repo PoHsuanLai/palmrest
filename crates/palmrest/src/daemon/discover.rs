@@ -1,17 +1,13 @@
 //! Finding the mouse's hidraw node, and the reconnect backoff (12.3.12).
 //!
-//! The uevent's `HID_ID` is parsed as `bus:vendor:product` and compared field by field; a
-//! substring search for "004c" and "0269" (what the Python daemon did) would also match a
-//! device whose name or another id merely contains those digits.
+//! The uevent's `HID_ID` is parsed as `bus:vendor:product` and looked up field by field in
+//! `sensor::magic_mouse::KNOWN` (FINDINGS F17).
 
 use crate::protocol::DeviceInfo;
+use crate::sensor::magic_mouse::{KnownDevice, known};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// The mouse maker's USB vendor id.
-pub const VENDOR: u32 = 0x004c;
-/// Magic Mouse 2 over Bluetooth (the USB-C model's id is unverified).
-pub const PRODUCT: u32 = 0x0269;
 /// Where hidraw class devices are listed.
 pub const SYS_HIDRAW: &str = "/sys/class/hidraw";
 
@@ -43,31 +39,53 @@ pub fn parse_uevent(text: &str) -> Option<HidId> {
     })
 }
 
-/// Whether this is a Magic Mouse 2.
-pub fn is_magic_mouse(id: &HidId) -> bool {
-    id.vendor == VENDOR && id.product == PRODUCT
+/// The known mouse this id belongs to, if any.
+pub fn known_device(id: &HidId) -> Option<&'static KnownDevice> {
+    known(id.bus, id.vendor, id.product)
 }
 
-/// The first Magic Mouse under `sys` (normally `/sys/class/hidraw`), as `/dev/hidrawN`.
-pub fn find(sys: &Path) -> Option<(PathBuf, DeviceInfo)> {
+/// Whether this is a Magic Mouse palmrest knows (verified or not).
+pub fn is_magic_mouse(id: &HidId) -> bool {
+    known_device(id).is_some()
+}
+
+/// A hidraw node of a known mouse.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Found {
+    pub node: PathBuf,
+    pub info: DeviceInfo,
+    pub device: KnownDevice,
+}
+
+/// The first known mouse under `sys` (normally `/sys/class/hidraw`), as `/dev/hidrawN`,
+/// preferring the order of `KNOWN` (the verified Magic Mouse 2 first).
+pub fn find(sys: &Path) -> Option<Found> {
     let mut entries: Vec<PathBuf> = std::fs::read_dir(sys)
         .ok()?
         .filter_map(|e| e.ok().map(|e| e.path()))
         .collect();
     entries.sort();
-    entries.into_iter().find_map(|dir| {
-        let id = parse_uevent(&std::fs::read_to_string(dir.join("device/uevent")).ok()?)?;
-        let node = Path::new("/dev").join(dir.file_name()?);
-        is_magic_mouse(&id).then(|| {
+    let found: Vec<Found> = entries
+        .into_iter()
+        .filter_map(|dir| {
+            let id = parse_uevent(&std::fs::read_to_string(dir.join("device/uevent")).ok()?)?;
+            let node = Path::new("/dev").join(dir.file_name()?);
+            let device = *known_device(&id)?;
             let info = DeviceInfo {
                 name: id.name.clone(),
                 path: node.display().to_string(),
                 vendor: id.vendor as u16,
                 product: id.product as u16,
             };
-            (node, info)
+            Some(Found { node, info, device })
         })
-    })
+        .collect();
+    let rank = |f: &Found| {
+        crate::sensor::magic_mouse::KNOWN
+            .iter()
+            .position(|k| *k == f.device)
+    };
+    found.into_iter().min_by_key(rank)
 }
 
 /// Exponential backoff: 1 s, doubling, capped.
@@ -156,7 +174,7 @@ mod tests {
             )
             .unwrap();
         }
-        let found = find(&root).map(|(p, i)| (p, i.product));
+        let found = find(&root).map(|f| (f.node, f.info.product));
         std::fs::remove_dir_all(&root).unwrap();
         assert_eq!(found, Some((PathBuf::from("/dev/hidraw3"), 0x269)));
     }

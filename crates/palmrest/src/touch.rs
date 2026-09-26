@@ -1,4 +1,11 @@
-//! One touch as the mouse reports it: 12-bit coordinates, a 4-bit id, an MTTouch state.
+//! One touch as the mouse reports it: 12-bit coordinates, a 4-bit id, an MTTouch state; and
+//! the grid `Point` the gesture core works in.
+//!
+// TODO(untested): `wrap_delta` takes every delta on the 12-bit circle, as the Magic Mouse's
+// coordinates require, so a displacement of more than half the circle aliases: 2048 grid
+// units, 78 mm across or 29 mm along. That is the mouse's own behaviour and is kept; through
+// the grid it now applies to every sensor, where a larger surface makes long displacements
+// (a contact's travel from its landing point) likelier. Unverified on any other device.
 //!
 //! Coordinates follow the kernel's reading (signed 12-bit, y negated), so `+x` is rightwards
 //! across the mouse and `+y` toward the user. The Python daemon read them unsigned and fixed
@@ -10,11 +17,13 @@ use serde::{Deserialize, Serialize};
 /// The span of a 12-bit coordinate; deltas are taken modulo this.
 pub const COORD_SPAN: i32 = 4096;
 
-/// A touch id, 0..=15, stable for the life of one contact.
+/// A touch id, stable for the life of one contact (0..=15 on the Magic Mouse; the low byte of
+/// the tracking id on evdev).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TouchId(pub u8);
 
-/// A position on the mouse surface in raw device units (x ~26 u/mm, y ~70.6 u/mm).
+/// A position on the grid the core computes on (`sensor::lattice`: 26 units/mm across, 70
+/// along), which is the Magic Mouse 2's own raw units.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct Point {
     pub x: i32,

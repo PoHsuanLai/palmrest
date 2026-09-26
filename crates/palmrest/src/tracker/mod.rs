@@ -64,6 +64,11 @@ impl Tracker {
         }
     }
 
+    /// Frames now come from a sensor with this surface (a new device was opened).
+    pub fn with_surface(self, surface: Surface) -> Self {
+        Self { surface, ..self }
+    }
+
     /// The surface the frames come from.
     pub fn surface(&self) -> &Surface {
         &self.surface
