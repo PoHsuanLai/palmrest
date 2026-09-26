@@ -8,7 +8,7 @@ use crate::protocol::DeviceInfo;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-/// Apple's USB vendor id.
+/// The mouse maker's USB vendor id.
 pub const VENDOR: u32 = 0x004c;
 /// Magic Mouse 2 over Bluetooth (the USB-C model's id is unverified).
 pub const PRODUCT: u32 = 0x0269;
