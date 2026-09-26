@@ -1,5 +1,6 @@
 //! The gesture layer: contact tracking and rejection, then G1-G7 over the contact set.
 
+pub mod bands;
 pub mod click;
 pub mod contacts;
 pub mod live;
@@ -9,6 +10,7 @@ pub mod scroll;
 pub mod swipe;
 pub mod tap;
 
+pub use bands::Bands;
 pub use click::{ClickGuard, Press};
 pub use contacts::{Contact, Contacts, PalmTurn, Seen};
 pub use motion::{MotionWindow, Moving};

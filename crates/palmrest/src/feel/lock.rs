@@ -9,7 +9,7 @@
 use super::curve::CurveParams;
 use super::gain::{HI_RES_PER_DETENT, RepeatGain, raw_per_hi_res, velocity_gain};
 use super::quantize::{Quanta, Quantizer};
-pub use super::rule::{Lock, LockParams, decide};
+pub use super::rule::{Lock, LockParams, Threshold, decide};
 use crate::protocol::Axis;
 use crate::time::Mono;
 use crate::touch::{Point, TouchId};
@@ -292,7 +292,7 @@ mod tests {
     use std::time::Duration;
 
     pub(crate) const PARAMS: LockParams = LockParams {
-        threshold: 40,
+        threshold: Threshold::both(40),
         ratio: 1.5,
         timeout: Duration::from_millis(250),
         speed: 32,

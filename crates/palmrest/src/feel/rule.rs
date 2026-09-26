@@ -4,10 +4,24 @@
 use super::curve::CurveParams;
 use std::time::Duration;
 
+/// Accumulated motion an axis needs before it can lock, per axis, in grid units.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Threshold {
+    pub x: i32,
+    pub y: i32,
+}
+
+impl Threshold {
+    /// The same number of grid units on both axes (the Python daemon's single threshold).
+    pub const fn both(units: i32) -> Self {
+        Self { x: units, y: units }
+    }
+}
+
 /// The lock's tunables, resolved from the config into the units the arithmetic uses.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LockParams {
-    pub threshold: i32,
+    pub threshold: Threshold,
     pub ratio: f64,
     pub timeout: Duration,
     pub speed: u16,
@@ -34,10 +48,11 @@ pub enum Lock {
 /// The lock rule: X first, then Y; two fingers on X are Blocked.
 pub fn decide(x: i32, y: i32, fingers: usize, p: &LockParams) -> Option<Lock> {
     let (ax, ay) = (f64::from(x.abs()), f64::from(y.abs()));
-    let t = f64::from(p.threshold.max(1));
-    let lock = if ax >= t && ax >= ay * p.ratio {
+    let tx = f64::from(p.threshold.x.max(1));
+    let ty = f64::from(p.threshold.y.max(1));
+    let lock = if ax >= tx && ax >= ay * p.ratio {
         Lock::X
-    } else if ay >= t && ay >= ax * p.ratio {
+    } else if ay >= ty && ay >= ax * p.ratio {
         Lock::Y
     } else {
         return None;
@@ -54,7 +69,7 @@ mod tests {
     use super::*;
 
     const PARAMS: LockParams = LockParams {
-        threshold: 40,
+        threshold: Threshold::both(40),
         ratio: 1.5,
         timeout: Duration::from_millis(250),
         speed: 32,

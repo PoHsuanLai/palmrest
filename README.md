@@ -11,8 +11,8 @@ shell dependency. Pointer motion and physical clicks stay in the kernel driver.
 ## Architecture
 
 ```
-hidraw ──read(64)──► decode ──► stamp ──► Tracker::step ──► Vec<Out> ──► dispatch
-                     (bytes)   (time)    (pure state)              │
+node ──read──► Sensor::decode ──► stamp ──► Tracker::step ──► Vec<Out> ──► dispatch
+     (bytes)   (Vec<Frame>, mm)   (time)    (pure state)              │
                                                                    ├─ Host(ToHost) ─► socket thread ─► subscribers
                                                                    ├─ Pad / Wheel / Key ─► Emitter (uinput)
                                                                    └─ Action ─► action::plan ─► spawn
@@ -20,17 +20,28 @@ subscribers ── PointerOver ──► socket thread ── claim ──► Tr
 gestures.toml ── inotify, 30 ms debounce ──► Tracker::with_config
 ```
 
-Two threads and no async runtime: the **reader** (poll on the hidraw fd, read, decode, step,
+The `Sensor` seam mirrors `Emitter` on the output side: `MagicMouseHid` (the hidraw node,
+decoded by palmrest) or `EvdevMultitouch` (a mouse's evdev node through its kernel multitouch
+driver) turns reads into millimetre `Frame`s, and everything after it is device-generic (see
+[Sensors](#sensors)).
+
+Two threads and no async runtime: the **reader** (poll on the sensor's fd, read, decode, step,
 emit, and every housekeeping step between reads) and the **socket** thread (accept, fan-out,
 `PointerOver` aggregation), woken by an eventfd so the reader never waits on a subscriber.
 
 The pure core takes bytes and instants and returns values; nothing in it reads a clock or
 touches a device, so a recording replays to exactly the outputs the live daemon produced.
+The core computes on an integer grid fixed in millimetres, the Magic Mouse 2's own (26
+units/mm across, 70 along), so the mouse's parity with the Python daemon is untouched and
+any other sensor's millimetres feel the same per millimetre.
 
 | Module | What it is |
 | --- | --- |
-| `decode`, `encode`, `report`, `touch` | report 0x12 and 0xF7 doubles to `Report`s and back (12.3.1) |
-| `stamp` | the 18-bit device timestamp fitted onto `CLOCK_MONOTONIC` (12.3.1, acceptance 12) |
+| `sensor` | the `Sensor` trait, `Frame`, `Surface`, millimetre units, the reference grid (`lattice`) |
+| `sensor::magic_mouse` | `MagicMouseHid`; `decode`, `encode`, `report`: report 0x12 and 0xF7 doubles to `Report`s and back (12.3.1); the known-device list |
+| `sensor::evdev` | `EvdevMultitouch`: `ABS_MT_*` slots and `SYN_REPORT` times (untested beyond the Magic Mouse) |
+| `touch` | the Magic Mouse's touch block, and the grid `Point` the core works in |
+| `stamp` | the 18-bit device timestamp fitted onto `CLOCK_MONOTONIC` (12.3.1, acceptance 12); evdev's kernel stamps |
 | `feel` | axis lock (the Python `ScrollAxisLock` as a value), gains, px, wheel quantisation, natural direction (12.3.8) |
 | `gestures` | contacts and palm/rest rejection P1-P5, scroll phases, G4 one-finger swipe, G5 workspace swipe, G6/G7 double-taps, the live model formulas |
 | `tracker` | `Tracker::step(self, &Report, now) -> (Self, Vec<Out>)`: all of the above composed (12.4) |
@@ -39,8 +50,29 @@ touches a device, so a recording replays to exactly the outputs the live daemon 
 | `config` | `gestures.toml`, lenient per key, the Python environment variables, the watch |
 | `outputs` | the `Emitter` seam, `RecordingEmitter`, the virtual touchpad model, evdev event encoding, the uinput emitter |
 | `sys` | the ioctls: the only module allowed `unsafe` |
-| `recording`, `replay` | the `palmrest record` file and the replay used by every acceptance test |
-| `daemon` | threads, socket, discovery and backoff, hidraw, devices, record, latency |
+| `recording`, `replay` | the `palmrest record` file (v1 hidraw, v2 any sensor) and the replay used by every acceptance test |
+| `daemon` | threads, socket, discovery and backoff, the sensor node (hidraw or evdev), devices, record, latency |
+
+## Sensors
+
+`[device] source` picks the sensor; it is read when the daemon looks for a device, so a change
+applies at the next reconnect.
+
+- **`"hidraw"`** (default): `MagicMouseHid`. The node is found by `HID_ID` in a list of known
+  mice: the Bluetooth Magic Mouse 2 (`004c:0269`) is the one verified. Listed but **untested**:
+  the Magic Mouse 2 on its cable (`05ac:0269`), the USB-C model (`0323`, id not read from a
+  device), and the Magic Mouse 1 (`05ac:030d`), whose report 0x29 palmrest does not decode;
+  the daemon refuses it and points at `"evdev"`.
+- **`"evdev"`**: `EvdevMultitouch`, a mouse's `/dev/input/eventN` with multitouch slots, as the
+  kernel's hid-magicmouse (or any other mouse's multitouch driver) exposes them. **Untested on
+  anything but the Magic Mouse**, and there only with synthetic event sequences and a
+  read-only open of the real node (FINDINGS F27). The node is opened read-only, switched to
+  `CLOCK_MONOTONIC` timestamps for this reader alone, and never grabbed. Touchpads are never
+  read (udev's `ID_INPUT_TOUCHPAD`, or `BTN_TOOL_FINGER`): they stay with libinput, and
+  shell-host already runs their scroll physics. A node that does not state its resolution is
+  refused rather than guessed at. The Magic Mouse's node carries no contact size, so the
+  light-touch and palm rules (P1, P3) do not apply through it, and the kernel's fuzz filter
+  delays small motions.
 
 ### The socket protocol (O1)
 
@@ -101,7 +133,12 @@ palmrest is not running three seconds later it rolls back by itself.
 ## Configuration
 
 `$XDG_CONFIG_HOME/palmrest/gestures.toml` (`config.toml` is read if that is absent). Every key
-of 22-SETTINGS §3.9/§3.10 with its default; `palmrest --print-config` prints them all. A bad
+of 22-SETTINGS §3.9/§3.10 with its default; `palmrest --print-config` prints them all.
+Lengths are micrometres (`_um`); a rule that was anisotropic in millimetres on the mouse
+(a Euclidean distance, the lock threshold) has an `_x_um` / `_y_um` pair. The old raw-unit
+keys (`scroll.lock_threshold`, `swipe.threshold`, `tap.max_move_units`,
+`palm_rejection.side_band_x_min`, ...) are still read, converted exactly, and logged as
+deprecated; a new key set beside an old one wins (FINDINGS F25, F26). A bad
 value costs only its own key (logged, default used). A change is re-read 30 ms after the last
 write and applied at the reader's next wake (at most 100 ms later). The Python
 daemon's variables (`SCROLL_SPEED`, `SCROLL_LOCK_RATIO`, `SCROLL_LOCK_TIMEOUT`,
@@ -119,7 +156,7 @@ curve = "mac_like"          # precise when slow, power-law gain when fast (defau
 ## Tools
 
 ```bash
-palmrest record FILE [SECONDS]              # raw reads + monotonic times
+palmrest record FILE [SECONDS]              # raw reads of device.source + monotonic times
 palmrest replay FILE                        # the outputs a recording produces, one JSON line each
 palmrest replay FILE --latency              # decode-to-bytes latency percentiles
 palmrest replay FILE --curve mac-like       # cumulative px and peak gain under both curves
@@ -143,10 +180,18 @@ Waiting for the user and the device (F1 has the core's list: items 8, 9, 10 live
   glides in Dolphin, Firefox and Konsole, and a touch stops it.
 - **Suppression (F23):** hovering a shell-host surface mid-glide stops the glide.
 
+Added by the sensor seam (F27):
+
+- **evdev on the Magic Mouse:** with `[device] source = "evdev"`, `palmrest record` a few
+  scrolls, swipes and double-taps and `palmrest replay` them: the gestures fire as on hidraw
+  (minus the palm and light-touch rules). Then run the daemon that way for a while and compare
+  the feel; the kernel's fuzz may make slow scrolls start later.
+
 ## Tests
 
 `cargo test` runs the unit tables and the acceptance tests of 12.8 items 1-7 (and the replay
-half of 10) against the fixtures in `crates/palmrest/tests/fixtures/`, which are synthesised
+half of 10), and `tests/evdev_parity.rs` (every fixture re-expressed as evdev events replays
+to the same outputs through `EvdevMultitouch`), against the fixtures in `crates/palmrest/tests/fixtures/`, which are synthesised
 from the documented report format by `tests/support/scenarios.rs` and must match it byte for
 byte (`PALMREST_REGEN_FIXTURES=1 cargo test --test fixtures_current` rewrites them). The Python
 parity goldens in `tests/fixtures/parity/` come from running those fixtures through the Python

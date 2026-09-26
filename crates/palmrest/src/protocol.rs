@@ -120,7 +120,8 @@ pub enum ToHost {
         axis: Option<Axis>,
         t_ns: u64,
     },
-    /// Two-finger horizontal travel in raw units, for a host running the live model (12.3.7).
+    /// Two-finger horizontal travel in grid units (26 per mm; on the Magic Mouse 2 its raw
+    /// units, as before), for a host running the live model (12.3.7).
     Swipe {
         gesture: GestureId,
         phase: Phase,

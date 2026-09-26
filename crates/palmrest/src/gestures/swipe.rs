@@ -1,14 +1,16 @@
 //! G5: two-finger horizontal travel switches workspaces (Trigger mode), the Python daemon's
 //! `DesktopSwipe` as a value.
 //!
-//! Travel is the pair's centroid from where it landed. Vertical travel that dominates past
-//! `vertical_max` re-anchors (the pair is scrolling); `threshold` of horizontal travel fires once
+//! Travel is the pair's centroid from where it landed, on the grid. Vertical travel that
+//! dominates past `vertical_max_um` re-anchors (the pair is scrolling; "dominates" compares grid
+//! units, as it always did); `threshold_um` of horizontal travel fires once
 //! in the direction the fingers moved and re-anchors, so a long drag keeps going after the
 //! cooldown. The same pair also feeds the host a raw `Swipe` stream for the live model.
 
 use crate::config::{Config, SwipeRepeat, WorkspaceMode};
 use crate::feel::{Hold, Sample};
 use crate::protocol::{GestureId, Phase};
+use crate::sensor::lattice::{Along, units};
 use crate::time::Mono;
 use crate::touch::TouchId;
 
@@ -56,7 +58,7 @@ impl Default for SwipeG {
 /// What one report produced.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum SwipeEvent {
-    /// For the host: the pair's phase and this report's centroid dx in raw units.
+    /// For the host: the pair's phase and this report's centroid dx in grid units.
     Stream {
         gesture: GestureId,
         phase: Phase,
@@ -151,16 +153,18 @@ impl SwipeG {
             ..p
         };
         let s = &cfg.swipe;
+        let vertical_max = units(s.vertical_max_um, Along::Y);
+        let threshold = units(s.threshold_um, Along::X);
         let anchor = |p: Pair| Pair {
             travel_x: 0,
             travel_y: 0,
             ..p
         };
         let (p, last_fire) = if hold == Hold::Held
-            || (p.travel_y.abs() > s.vertical_max.0 && p.travel_y.abs() > p.travel_x.abs())
+            || (p.travel_y.abs() > vertical_max && p.travel_y.abs() > p.travel_x.abs())
         {
             (anchor(p), self.last_fire)
-        } else if p.travel_x.abs() < s.threshold.0.max(1) {
+        } else if p.travel_x.abs() < threshold.max(1) {
             (p, self.last_fire)
         } else {
             let dir = if p.travel_x > 0 {

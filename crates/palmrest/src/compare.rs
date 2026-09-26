@@ -3,8 +3,8 @@
 
 use crate::config::{Config, Curve};
 use crate::protocol::{Phase, ToHost};
-use crate::recording::Record;
-use crate::replay::{Timing, outs, replay_to_end};
+use crate::recording::{Record, RecordedSource};
+use crate::replay::{Timing, outs, replay_from};
 use crate::tracker::Out;
 
 /// What one curve made of a recording (socket px, finger direction).
@@ -29,12 +29,23 @@ pub struct Comparison {
     pub mac_like: CurveRun,
 }
 
-/// Replays `records` under `Current` and `MacLike`, every other key as in `cfg`.
+/// Replays Magic Mouse hidraw `records` under `Current` and `MacLike`, every other key as in
+/// `cfg`.
 pub fn compare_curves(records: &[Record], cfg: &Config, timing: Timing) -> Comparison {
+    compare_curves_from(&RecordedSource::MagicMouseHid, records, cfg, timing)
+}
+
+/// `compare_curves` for records from any source.
+pub fn compare_curves_from(
+    source: &RecordedSource,
+    records: &[Record],
+    cfg: &Config,
+    timing: Timing,
+) -> Comparison {
     let run = |curve| {
         let mut c = cfg.clone();
         c.feel.curve = curve;
-        let (tracker, steps) = replay_to_end(records, c, timing);
+        let (tracker, steps) = replay_from(source, records, c, timing);
         summarise(curve, &outs(&steps), tracker.peak_gain())
     };
     Comparison {

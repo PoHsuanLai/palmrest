@@ -4,9 +4,9 @@
 //! daemon's own path from bytes to outputs, not a test-only shortcut.
 
 use crate::config::Config;
-use crate::decode::{DecodeError, decode};
 use crate::feel::Lock;
-use crate::recording::Record;
+use crate::recording::{Record, RecordedSource};
+use crate::sensor::{MagicMouseHid, Sensor, SensorError};
 use crate::stamp::StampClock;
 use crate::time::Mono;
 use crate::tracker::{Out, Tracker};
@@ -27,10 +27,10 @@ pub struct Step {
     pub outs: Vec<Out>,
     /// The scroll lock decision after this record (parity compares it).
     pub lock: Lock,
-    pub error: Option<DecodeError>,
+    pub error: Option<SensorError>,
 }
 
-/// Replays `records` from a fresh tracker.
+/// Replays Magic Mouse hidraw `records` from a fresh tracker.
 ///
 /// Between records the tracker is ticked at its deadlines, as the reader thread's poll timeout
 /// does, and after the last record until it has none left; each tick that produced outputs is a
@@ -42,13 +42,24 @@ pub fn replay(records: &[Record], cfg: Config, timing: Timing) -> Vec<Step> {
 
 /// `replay`, also returning the tracker after the last record and its ticks.
 pub fn replay_to_end(records: &[Record], cfg: Config, timing: Timing) -> (Tracker, Vec<Step>) {
-    let mut tracker = Tracker::new(cfg);
+    replay_from(&RecordedSource::MagicMouseHid, records, cfg, timing)
+}
+
+/// Replays `records` from `source` through a fresh sensor and tracker.
+pub fn replay_from(
+    source: &RecordedSource,
+    records: &[Record],
+    cfg: Config,
+    timing: Timing,
+) -> (Tracker, Vec<Step>) {
+    let mut sensor = source.sensor();
+    let mut tracker = Tracker::on(cfg, sensor.surface());
     let mut clock = StampClock::new();
     let mut steps = Vec::with_capacity(records.len());
     for r in records {
         let (t, ticks) = ticks_until(tracker, Some(r.at));
         steps.extend(ticks);
-        let (t, clk, step) = feed(t, clock, r, timing);
+        let (t, clk, step) = feed_from(sensor.as_mut(), t, clock, r, timing);
         tracker = t;
         clock = clk;
         steps.push(step);
@@ -86,14 +97,25 @@ fn ticks_until(mut tracker: Tracker, until: Option<Mono>) -> (Tracker, Vec<Step>
     (tracker, steps)
 }
 
-/// One hidraw read through decode, the stamp clock and the tracker: the reader thread's body.
+/// One Magic Mouse hidraw read through decode, the stamp clock and the tracker.
 pub fn feed(
     tracker: Tracker,
     clock: StampClock,
     r: &Record,
     timing: Timing,
 ) -> (Tracker, StampClock, Step) {
-    match decode(&r.bytes) {
+    feed_from(&mut MagicMouseHid::default(), tracker, clock, r, timing)
+}
+
+/// One read through the sensor, the stamp clock and the tracker: the reader thread's body.
+pub fn feed_from<S: Sensor + ?Sized>(
+    sensor: &mut S,
+    tracker: Tracker,
+    clock: StampClock,
+    r: &Record,
+    timing: Timing,
+) -> (Tracker, StampClock, Step) {
+    match sensor.decode(&r.bytes) {
         Err(e) => {
             let lock = tracker.lock();
             (
@@ -107,14 +129,14 @@ pub fn feed(
                 },
             )
         }
-        Ok(reports) => {
+        Ok(frames) => {
             let (mut tracker, mut clock, mut outs) = (tracker, clock, Vec::new());
-            for report in &reports {
+            for frame in &frames {
                 let (c, now) = match timing {
                     Timing::Arrival => (clock, r.at),
-                    Timing::Calibrated => clock.observe(report.stamp, r.at),
+                    Timing::Calibrated => clock.frame_time(frame.stamp, r.at),
                 };
-                let (t, o) = tracker.step(report, now);
+                let (t, o) = tracker.step(frame, now);
                 tracker = t;
                 clock = c;
                 outs.extend(o);

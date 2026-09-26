@@ -1,14 +1,16 @@
-//! Everything with an effect: threads, the socket, the hidraw node, the virtual devices, the
-//! clock. The pure core never reaches in here.
+//! Everything with an effect: threads, the socket, the sensor's node (hidraw or evdev), the
+//! virtual devices, the clock. The pure core never reaches in here.
 
 pub mod devices;
 pub mod discover;
 pub mod dispatch;
+pub mod evdev;
 pub mod hidraw;
 pub mod latency;
 pub mod reader;
 pub mod record;
 pub mod socket;
+pub mod source;
 
 use crate::action::Desktop;
 use crate::config::{self, Loaded};

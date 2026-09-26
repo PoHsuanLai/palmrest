@@ -1,4 +1,4 @@
-//! `Tracker::step`: one report in, the outputs it causes out (12.4).
+//! `Tracker::step`: one sensor frame in, the outputs it causes out (12.4).
 //!
 //! The whole gesture state of the daemon is this one value. It never reads a clock or touches a
 //! device: `now` is an argument and every effect is an `Out`, so a recording replays to exactly
@@ -14,17 +14,18 @@ use crate::action::Gesture;
 use crate::config::{Config, Rejection};
 use crate::feel::{Hold, Lock, LockParams};
 use crate::gestures::{
-    ClickGuard, Contacts, FingerDirection, MotionWindow, Moving, OneSwipe, PalmTurn, Press,
+    Bands, ClickGuard, Contacts, FingerDirection, MotionWindow, Moving, OneSwipe, PalmTurn, Press,
     ScrollEvent, ScrollG, SwipeEvent, SwipeG, TapG,
 };
 use crate::protocol::{ActiveTouch, Over, ToHost};
-use crate::report::Report;
+use crate::sensor::{Frame, Surface, magic_mouse};
 use crate::time::Mono;
 
 /// Every piece of gesture state between reports.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tracker {
     cfg: Config,
+    surface: Surface,
     contacts: Contacts,
     click: ClickGuard,
     motion: MotionWindow,
@@ -39,9 +40,16 @@ pub struct Tracker {
 }
 
 impl Tracker {
+    /// A tracker for the Magic Mouse 2's surface.
     pub fn new(cfg: Config) -> Self {
+        Self::on(cfg, magic_mouse::surface())
+    }
+
+    /// A tracker for the frames of a sensor with this surface.
+    pub fn on(cfg: Config, surface: Surface) -> Self {
         Self {
             cfg,
+            surface,
             contacts: Contacts::default(),
             click: ClickGuard::Idle,
             motion: MotionWindow::default(),
@@ -54,6 +62,16 @@ impl Tracker {
             peak_gain: 1.0,
             touching: ActiveTouch::Up,
         }
+    }
+
+    /// Frames now come from a sensor with this surface (a new device was opened).
+    pub fn with_surface(self, surface: Surface) -> Self {
+        Self { surface, ..self }
+    }
+
+    /// The surface the frames come from.
+    pub fn surface(&self) -> &Surface {
+        &self.surface
     }
 
     /// The configuration in force.
@@ -126,13 +144,13 @@ impl Tracker {
         s = Self {
             claimed: s.claimed,
             scroll: s.scroll,
-            ..Self::new(s.cfg)
+            ..Self::on(s.cfg, s.surface)
         };
         (s, out)
     }
 
-    /// Consumes one report.
-    pub fn step(self, r: &Report, now: Mono) -> (Self, Vec<Out>) {
+    /// Consumes one frame.
+    pub fn step(self, r: &Frame, now: Mono) -> (Self, Vec<Out>) {
         let pr = &self.cfg.palm_rejection;
         let (click, press) = self
             .click
@@ -145,7 +163,8 @@ impl Tracker {
             (Rejection::On, Moving::Yes) => pr.mouse_moving_lock_multiplier.ratio(),
             _ => 1.0,
         };
-        let (contacts, seen) = self.contacts.step(&r.touches, now, &self.cfg);
+        let bands = Bands::resolve(&self.cfg.palm_rejection, &self.surface);
+        let (contacts, seen) = self.contacts.step(&r.contacts, now, &self.cfg, &bands);
         let s = Self {
             click,
             motion,

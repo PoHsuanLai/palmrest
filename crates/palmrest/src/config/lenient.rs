@@ -8,16 +8,44 @@ use serde::de::DeserializeOwned;
 use std::fmt;
 use toml::{Table, Value};
 
-/// A key whose value was not usable, and why.
+/// A key that was not read as written, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Warning {
     pub key: String,
     pub problem: String,
+    pub outcome: Outcome,
+}
+
+/// What was done about a key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// The value was unusable; the key's default is in force.
+    DefaultUsed,
+    /// A deprecated key was read and converted to its replacement.
+    Converted,
+    /// A deprecated key was ignored because its replacement is set.
+    Ignored,
+}
+
+impl Warning {
+    /// An unusable value: the default stands.
+    pub fn unusable(key: impl Into<String>, problem: impl Into<String>) -> Self {
+        Self {
+            key: key.into(),
+            problem: problem.into(),
+            outcome: Outcome::DefaultUsed,
+        }
+    }
 }
 
 impl fmt::Display for Warning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {} (using the default)", self.key, self.problem)
+        match self.outcome {
+            Outcome::DefaultUsed => {
+                write!(f, "{}: {} (using the default)", self.key, self.problem)
+            }
+            Outcome::Converted | Outcome::Ignored => write!(f, "{}: {}", self.key, self.problem),
+        }
     }
 }
 
@@ -32,10 +60,7 @@ pub fn read_serde<T: DeserializeOwned>(v: &Value, key: &str, warn: &mut Vec<Warn
     match v.clone().try_into::<T>() {
         Ok(t) => Some(t),
         Err(e) => {
-            warn.push(Warning {
-                key: key.to_owned(),
-                problem: e.to_string().trim().to_owned(),
-            });
+            warn.push(Warning::unusable(key, e.to_string().trim()));
             None
         }
     }
@@ -92,10 +117,10 @@ pub fn ranged<T: Setting + PartialOrd + fmt::Debug>(
     match T::read(v, &name, warn) {
         Some(t) if t >= lo && t <= hi => t,
         Some(t) => {
-            warn.push(Warning {
-                key: name,
-                problem: format!("{t:?} is outside {lo:?}..={hi:?}"),
-            });
+            warn.push(Warning::unusable(
+                name,
+                format!("{t:?} is outside {lo:?}..={hi:?}"),
+            ));
             default
         }
         None => default,
@@ -108,10 +133,7 @@ pub fn section(table: &Table, path: &str, key: &str, warn: &mut Vec<Warning>) ->
         None => Table::new(),
         Some(Value::Table(t)) => t.clone(),
         Some(_) => {
-            warn.push(Warning {
-                key: dotted(path, key),
-                problem: "is not a table".to_owned(),
-            });
+            warn.push(Warning::unusable(dotted(path, key), "is not a table"));
             Table::new()
         }
     }

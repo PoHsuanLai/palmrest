@@ -6,7 +6,7 @@
 #![allow(unsafe_code)]
 
 use rustix::fd::AsFd;
-use rustix::ioctl::{self, IntegerSetter, NoArg, Opcode, Setter, Updater, opcode};
+use rustix::ioctl::{self, Getter, IntegerSetter, NoArg, Opcode, Setter, Updater, opcode};
 use std::io;
 
 /// `HIDIOCSFEATURE(3)`: send a 3-byte feature report.
@@ -19,6 +19,49 @@ pub fn send_feature(fd: impl AsFd, report: [u8; 3]) -> io::Result<()> {
     // 0x06, len) taking a `char[len]` buffer; the opcode is built for exactly `[u8; 3]` and the
     // buffer is that array, borrowed mutably for the call.
     unsafe { ioctl::ioctl(fd, Updater::<HIDIOCSFEATURE_3, [u8; 3]>::new(&mut buf)) }
+        .map_err(io::Error::from)
+}
+
+/// `EVIOCGABS(ABS_MT_SLOT)`, `EVIOCGABS(ABS_MT_POSITION_X)`, `EVIOCGABS(ABS_MT_POSITION_Y)`:
+/// read one absolute axis's `struct input_absinfo`.
+const EVIOCGABS_MT_SLOT: Opcode = opcode::read::<AbsInfo>(b'E', 0x40 + 0x2f);
+const EVIOCGABS_MT_X: Opcode = opcode::read::<AbsInfo>(b'E', 0x40 + 0x35);
+const EVIOCGABS_MT_Y: Opcode = opcode::read::<AbsInfo>(b'E', 0x40 + 0x36);
+/// `EVIOCSCLOCKID`: which clock this fd's event timestamps use.
+const EVIOCSCLOCKID: Opcode = opcode::write::<i32>(b'E', 0xa0);
+/// `CLOCK_MONOTONIC`.
+const CLOCK_MONOTONIC: i32 = 1;
+
+/// An evdev axis palmrest reads the geometry of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MtAxis {
+    Slot,
+    PositionX,
+    PositionY,
+}
+
+/// Reads one multitouch axis's range and resolution from an evdev fd. Read-only: it changes
+/// nothing on the device.
+pub fn abs_info(fd: impl AsFd, axis: MtAxis) -> io::Result<AbsInfo> {
+    // SAFETY: linux/input.h declares EVIOCGABS(abs) as _IOR('E', 0x40 + abs, struct
+    // input_absinfo); each opcode is built from `AbsInfo`, its #[repr(C)] mirror, and the
+    // kernel writes exactly one of them.
+    let r = unsafe {
+        match axis {
+            MtAxis::Slot => ioctl::ioctl(fd, Getter::<EVIOCGABS_MT_SLOT, AbsInfo>::new()),
+            MtAxis::PositionX => ioctl::ioctl(fd, Getter::<EVIOCGABS_MT_X, AbsInfo>::new()),
+            MtAxis::PositionY => ioctl::ioctl(fd, Getter::<EVIOCGABS_MT_Y, AbsInfo>::new()),
+        }
+    };
+    r.map_err(io::Error::from)
+}
+
+/// Stamps this fd's events on `CLOCK_MONOTONIC` instead of the wall clock. Per open file: no
+/// other reader of the device is affected.
+pub fn monotonic_events(fd: impl AsFd) -> io::Result<()> {
+    // SAFETY: linux/input.h declares EVIOCSCLOCKID as _IOW('E', 0xa0, int) and evdev reads an
+    // `int` through the pointer; the opcode is sized from `i32` and the argument is one.
+    unsafe { ioctl::ioctl(fd, Setter::<EVIOCSCLOCKID, i32>::new(CLOCK_MONOTONIC)) }
         .map_err(io::Error::from)
 }
 
@@ -133,7 +176,7 @@ mod tests {
 
     #[test]
     fn opcodes_match_the_kernel_headers() {
-        // Values from linux/uinput.h and linux/hidraw.h on x86_64.
+        // Values from linux/uinput.h, linux/hidraw.h and linux/input.h on x86_64.
         assert_eq!(HIDIOCSFEATURE_3, 0xc003_4806);
         assert_eq!(UI_DEV_CREATE, 0x5501);
         assert_eq!(UI_DEV_DESTROY, 0x5502);
@@ -144,6 +187,11 @@ mod tests {
         assert_eq!(UI_SET_RELBIT, 0x4004_5566);
         assert_eq!(UI_SET_ABSBIT, 0x4004_5567);
         assert_eq!(UI_SET_PROPBIT, 0x4004_556e);
+        assert_eq!(EVIOCGABS_MT_SLOT, 0x8018_456f);
+        assert_eq!(EVIOCGABS_MT_X, 0x8018_4575);
+        assert_eq!(EVIOCGABS_MT_Y, 0x8018_4576);
+        assert_eq!(EVIOCSCLOCKID, 0x4004_45a0);
+        assert_eq!(std::mem::size_of::<AbsInfo>(), 24);
         assert_eq!(std::mem::size_of::<UinputSetup>(), 92);
         assert_eq!(std::mem::size_of::<UinputAbsSetup>(), 28);
     }

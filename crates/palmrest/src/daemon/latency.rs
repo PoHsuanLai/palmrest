@@ -5,8 +5,8 @@
 use crate::config::Config;
 use crate::outputs::events::{PadEncoder, key_events, wheel_events};
 use crate::protocol;
-use crate::recording::Record;
-use crate::replay::{Timing, feed};
+use crate::recording::{Record, RecordedSource};
+use crate::replay::{Timing, feed_from};
 use crate::stamp::StampClock;
 use crate::tracker::{Out, Tracker};
 use std::time::{Duration, Instant};
@@ -28,9 +28,15 @@ pub struct LatencyReport {
     pub uinput: Percentiles,
 }
 
-/// Replays `records`, timing each read.
+/// Replays Magic Mouse hidraw `records`, timing each read.
 pub fn measure(records: &[Record], cfg: Config) -> LatencyReport {
-    let mut tracker = Tracker::new(cfg);
+    measure_from(&RecordedSource::MagicMouseHid, records, cfg)
+}
+
+/// `measure` for records from any source.
+pub fn measure_from(source: &RecordedSource, records: &[Record], cfg: Config) -> LatencyReport {
+    let mut sensor = source.sensor();
+    let mut tracker = Tracker::on(cfg, sensor.surface());
     let mut clock = StampClock::new();
     let mut encoder = PadEncoder::default();
     let (mut socket, mut uinput) = (
@@ -39,7 +45,7 @@ pub fn measure(records: &[Record], cfg: Config) -> LatencyReport {
     );
     for r in records {
         let start = Instant::now();
-        let (t, c, step) = feed(tracker, clock, r, Timing::Calibrated);
+        let (t, c, step) = feed_from(sensor.as_mut(), tracker, clock, r, Timing::Calibrated);
         tracker = t;
         clock = c;
         let mut bytes = 0usize;

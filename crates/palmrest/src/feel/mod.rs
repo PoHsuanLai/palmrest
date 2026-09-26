@@ -11,13 +11,14 @@ pub mod rule;
 
 pub use curve::{CurveParams, MacLike};
 pub use gain::{HI_RES_PER_DETENT, RepeatGain};
-pub use lock::{AxisLock, Hold, Lock, LockEvent, LockParams, Move, Sample};
+pub use lock::{AxisLock, Hold, Lock, LockEvent, LockParams, Move, Sample, Threshold};
 pub use momentum::Drag;
 pub use natural::{NaturalScroll, offset_delta};
 pub use quantize::{Quanta, Quantized, Quantizer, UnitCarry, WheelDelta};
 pub use release::{ReleaseRule, Samples as ReleaseSamples};
 
-use crate::config::Config;
+use crate::config::{Config, Um};
+use crate::sensor::lattice::{Along, units};
 
 impl LockParams {
     /// The lock's parameters from the config, with the P5 threshold multiplier applied when
@@ -25,7 +26,10 @@ impl LockParams {
     pub fn from_config(c: &Config, threshold_multiplier: f64) -> Self {
         let s = &c.scroll;
         Self {
-            threshold: (f64::from(s.lock_threshold.0) * threshold_multiplier).round() as i32,
+            threshold: Threshold {
+                x: scaled(s.lock_threshold_x_um, Along::X, threshold_multiplier),
+                y: scaled(s.lock_threshold_y_um, Along::Y, threshold_multiplier),
+            },
             ratio: s.lock_ratio.ratio(),
             timeout: s.lock_timeout_ms.duration(),
             speed: s.speed.0,
@@ -35,4 +39,9 @@ impl LockParams {
             curve: CurveParams::from_settings(&c.feel),
         }
     }
+}
+
+/// A threshold on the grid times the P5 multiplier, rounded as the Python daemon rounded it.
+fn scaled(um: Um, axis: Along, multiplier: f64) -> i32 {
+    (f64::from(units(um, axis)) * multiplier).round() as i32
 }

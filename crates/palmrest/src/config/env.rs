@@ -1,10 +1,12 @@
 //! The Python daemon's environment variables, still honoured so a parity run can configure both
 //! daemons the same way (12.3.12). Each variable overrides its file key, with the clamping the
-//! Python daemon applies and no other range check.
+//! Python daemon applies and no other range check. The three raw-unit variables are converted
+//! to micrometres on the grid (`sensor::lattice`), which the core rounds back to the same units.
 
 use super::file::Config;
 use super::lenient::Warning;
-use super::units::{Count, Fraction, Ms, Units};
+use super::units::{Count, Fraction, Ms};
+use crate::sensor::lattice::{Along, micrometres};
 
 /// Applies every variable `lookup` knows. Unparseable values are ignored with a warning, as
 /// the Python daemon ignores them.
@@ -15,13 +17,14 @@ pub fn apply_env(mut c: Config, lookup: impl Fn(&str) -> Option<String>) -> (Con
         c.scroll.speed = Count(v.clamp(0, 63) as u16);
     }
     if let Some(v) = int("SCROLL_LOCK_THRESHOLD") {
-        c.scroll.lock_threshold = Units(v.clamp(1, i64::from(i32::MAX)) as i32);
+        c.scroll.lock_threshold_x_um = micrometres(raw_units(v), Along::X);
+        c.scroll.lock_threshold_y_um = micrometres(raw_units(v), Along::Y);
     }
     if let Some(v) = int("SWIPE_THRESHOLD") {
-        c.swipe.threshold = Units(v.clamp(1, i64::from(i32::MAX)) as i32);
+        c.swipe.threshold_um = micrometres(raw_units(v), Along::X);
     }
     if let Some(v) = int("SWIPE_VERTICAL_MAX") {
-        c.swipe.vertical_max = Units(v.clamp(1, i64::from(i32::MAX)) as i32);
+        c.swipe.vertical_max_um = micrometres(raw_units(v), Along::Y);
     }
     let mut float = |name: &str| {
         read(&lookup, name, &mut warn, |s| {
@@ -55,12 +58,15 @@ fn read<T>(
     let raw = lookup(name)?;
     let parsed = parse(raw.trim());
     if parsed.is_none() {
-        warn.push(Warning {
-            key: name.to_owned(),
-            problem: format!("{raw:?} is not a number"),
-        });
+        warn.push(Warning::unusable(name, format!("{raw:?} is not a number")));
     }
     parsed
+}
+
+/// A raw-unit variable, clamped as Python clamps it (at least 1) and to what a micrometre
+/// key can hold.
+fn raw_units(v: i64) -> i32 {
+    v.clamp(1, 1_000_000) as i32
 }
 
 fn seconds_to_ms(s: f64) -> Ms {
@@ -98,11 +104,12 @@ mod tests {
         assert_eq!(c.scroll.speed, Count(63));
         assert_eq!(c.scroll.lock_ratio, Fraction(1000));
         assert_eq!(c.scroll.lock_timeout_ms, Ms(300));
-        assert_eq!(c.scroll.lock_threshold, Units(60));
+        assert_eq!(c.scroll.lock_threshold_x_um, micrometres(60, Along::X));
+        assert_eq!(c.scroll.lock_threshold_y_um, micrometres(60, Along::Y));
         assert_eq!(c.scroll.velocity_gain_max, Fraction(3000));
         assert_eq!(c.scroll.repeat_gain_max, Fraction(1000));
-        assert_eq!(c.swipe.threshold, Units(250));
-        assert_eq!(c.swipe.vertical_max, Units(100));
+        assert_eq!(c.swipe.threshold_um, micrometres(250, Along::X));
+        assert_eq!(c.swipe.vertical_max_um, micrometres(100, Along::Y));
         assert_eq!(c.swipe.cooldown_ms, Ms(750));
     }
 

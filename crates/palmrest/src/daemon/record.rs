@@ -1,11 +1,13 @@
-//! `palmrest record FILE`: raw reports with their arrival times, for replay and tuning.
+//! `palmrest record FILE`: raw reads of the configured sensor with their arrival times, for
+//! replay and tuning (a v1 file for hidraw, v2 naming the node's geometry for evdev).
 //!
 //! Opens the node read-only: it only listens, exactly as the kernel and any other reader do,
 //! and sends nothing to the mouse.
 
-use super::discover::{self, SYS_HIDRAW};
-use super::hidraw::{self, Access, Read};
-use crate::recording::{MAGIC, Record, encode_record};
+use super::hidraw::{self, Read};
+use super::source::{self, Purpose};
+use crate::config::DeviceSource;
+use crate::recording::{Record, encode_record, header};
 use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
@@ -20,12 +22,12 @@ pub struct Limits {
 }
 
 /// Records until a limit is reached; returns the number of reads captured.
-pub fn record(out: &Path, limits: Limits) -> Result<usize, String> {
-    let (path, info) = discover::find(Path::new(SYS_HIDRAW)).ok_or("no Magic Mouse found")?;
-    let (fd, _) =
-        hidraw::open(&path, Access::ReadOnly).map_err(|e| format!("{}: {e}", path.display()))?;
+pub fn record(out: &Path, source: DeviceSource, limits: Limits) -> Result<usize, String> {
+    let opened = source::open(source, Purpose::Record)?;
+    let info = &opened.info;
     let mut file = std::fs::File::create(out).map_err(|e| format!("{}: {e}", out.display()))?;
-    file.write_all(MAGIC).map_err(|e| e.to_string())?;
+    file.write_all(&header(&opened.recorded()))
+        .map_err(|e| e.to_string())?;
     eprintln!(
         "palmrest: recording {} ({}) to {}",
         info.name,
@@ -40,7 +42,7 @@ pub fn record(out: &Path, limits: Limits) -> Result<usize, String> {
         if now.since(last) >= limits.idle || now.since(start) >= limits.total {
             break;
         }
-        match hidraw::read(&fd, Duration::from_millis(100)) {
+        match hidraw::read_up_to(&opened.fd, Duration::from_millis(100), opened.read_len) {
             Read::Report(bytes) => {
                 last = hidraw::now();
                 file.write_all(&encode_record(&Record { at: last, bytes }))
