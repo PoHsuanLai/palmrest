@@ -233,3 +233,101 @@ inside one `SYN_REPORT` might keep the finger count at two throughout; how libin
 that is unknown and it is not attempted. Found on the way: the *stroke's* re-land (the core
 `Pad::moved`, used by `toolkit` too) drops the delta of the frame that crosses the margin; the
 glide adds it back after landing, the stroke path is left as it was.
+
+## Sensor seam (branch `sensor`)
+
+**F25. A millimetre frame over the Magic Mouse's own grid.** The tracker now consumes
+`Frame`s (`buttons`, `motion`, `contacts` at `MmPoint`s, `stamp`) from a `Sensor`, and every
+length threshold is configured in micrometres. The core does *not* compute in float
+millimetres: the feel truncates the per-axis centroid and carries integer remainders exactly as
+the Python daemon did (F4, F5), and float millimetres would move those truncations. Instead
+each frame is projected onto a fixed integer grid, `sensor::lattice::REFERENCE`, which is the
+Magic Mouse 2's resolution as its kernel driver advertises it: **26 units/mm across, 70
+units/mm along**, read from the device with `EVIOCGABS` (`evtest`, read-only:
+`ABS_MT_POSITION_X` -1100..1258 res 26, `ABS_MT_POSITION_Y` -1589..2047 res 70). The ~70.6 in
+`touch.rs` and F22 was the physical pitch; the driver truncates it to 70, and the grid uses the
+driver's number so that the mouse's hidraw and evdev paths land on the same integers. A mm value
+printed by palmrest is therefore up to 0.8 % off the physical length along y, which changes
+nothing: defaults are defined through the same factors. `MagicMouseHid` lifts each report at
+exactly the grid's resolution, and `units(mm(u)) == u` for every integer (tested over
+-5000..5000 at several resolutions, and over every x of the mouse's range), so the core sees the
+integers the mouse sent. Thresholds convert as `round(um * units_per_mm / 1000)`:
+
+| Old key (raw units) | Rule | New key(s), default (grid units) | Anisotropic in mm? |
+| --- | --- | --- | --- |
+| `scroll.lock_threshold` 40 | each axis vs one number | `lock_threshold_x_um` 1538 (40), `_y_um` 571 (40) | yes: 1.54 mm across, 0.57 along |
+| `swipe.threshold` 200 | x travel | `threshold_um` 7692 (200) | |
+| `swipe.vertical_max` 150 | y travel, then \|y\| > \|x\| in grid units | `vertical_max_um` 2143 (150) | the \|y\| > \|x\| comparison is (kept) |
+| `tap.max_move_units` 40 | Euclidean | `max_move_x_um` 1538, `_y_um` 571 (40, 40) | yes: an ellipse |
+| `tap.centroid_max_units` 300 | Euclidean | `centroid_max_x_um` 11538, `_y_um` 4286 (300, 300) | yes |
+| `gestures.g4_travel_units` 300 | x travel | `g4_travel_um` 11538 (300) | |
+| `gestures.host_swipe_D_units`, `live_workspace_D_units` 1000 | x travel | `host_swipe_D_um`, `live_workspace_D_um` 38462 (1000) | |
+| `palm_rejection.side_band_x_min` -900 | absolute x | `side_band_left_um` 7692: 200 from the left edge (-1100) | |
+| `palm_rejection.side_band_x_max` 1060 | absolute x | `side_band_right_um` 7615: 198 from the right edge (1258) | |
+| `palm_rejection.resting_move_floor_units` 30 | Euclidean | `resting_move_floor_x_um` 1154, `_y_um` 429 (30, 30) | yes |
+
+Euclidean rules take an `Ellipse` of an x and a y radius; with equal radii on the grid (every
+default) the scale factors are exactly 1.0 and the test is the old `hypot(dx, dy) >= r` float
+for float. Side bands became widths from the surface's edges so they mean something on another
+surface; the rear band was already a share of the length. Left in Magic Mouse units, because no
+other sensor has them: `light_touch_size_max` (size 0..63, P1) and `large_contact_major_units`
+(P3), applied only to `Shape::MagicMouse`; and the `feel.mac_like_*` speeds, the velocity gain's
+2000 units/s and the speed ratio, which are the transfer function rather than recognition
+thresholds and are applied to whichever axis locked, so they stay grid units per second (the
+same per millimetre on every sensor). P5's counts/s is in the sensor's own mouse counts.
+
+**F26. Old settings files keep working, and the Magic Mouse is unchanged.** Every old raw-unit
+key is still read (`config::legacy`) with its old range, converted onto its replacement(s),
+and reported as a `Warning` with `Outcome::Converted` ("... is in raw Magic Mouse units, which
+are deprecated; read as scroll.lock_threshold_x_um = 1538, ..."); a replacement set in the same
+table wins (`Outcome::Ignored`); a bad old value keeps the default (`Outcome::DefaultUsed`, the
+existing wording). `SCROLL_LOCK_THRESHOLD`, `SWIPE_THRESHOLD` and `SWIPE_VERTICAL_MAX` convert
+the same way (now clamped at 1 000 000 units rather than `i32::MAX`, which a micrometre key
+could not hold). Parity: every existing test passes; edits to tests were API only
+(`LockParams.threshold` is a `Threshold { x, y }` in `acceptance_3`'s literal; the config tests
+name the new keys; `contacts`' band table moved to `gestures/bands.rs` with the same cases).
+Beyond the suite, `palmrest replay` of all 43 fixtures under four configurations (defaults;
+wheel + `foreign_momentum = "ours"` + `mac_like`; `rejection = "off"`; a file of *non-default
+old raw keys*), with arrival and calibrated timing, 344 outputs, is byte-identical between
+master (e923d19) and this branch.
+
+**F27. The `Sensor` trait and the evdev sensor.** `fn surface(&self) -> Surface` (extent in mm,
+resolution per axis, `ButtonZones`, `DeviceClock::{Ticks18, Kernel, ArrivalOnly}`) and
+`fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, SensorError>`. `&mut self` and a
+`Vec` because an evdev read is a run of events whose frames end at `SYN_REPORT` and can span
+reads (and the kernel resends only changed values, so slot positions outlive their contacts);
+a `Result` because a malformed read is logged and counted, as before. `EvdevMultitouch`
+implements protocol B (`ABS_MT_SLOT`, `TRACKING_ID`, `POSITION_X/Y`, `BTN_LEFT/RIGHT`,
+`REL_X/Y`), stamps each frame with its `SYN_REPORT` time (the fd is switched to
+`CLOCK_MONOTONIC` with `EVIOCSCLOCKID`, which affects only palmrest's open file), drops events
+after `SYN_DROPPED` until the next report and then treats every slot as lifted, and refuses a
+node with no position resolution. The daemon picks a node that is a mouse (`REL_X/Y`) with MT
+slots and is not a touchpad (`ID_INPUT_TOUCHPAD` in udev's database, or `BTN_TOOL_FINGER`),
+opens it `O_RDONLY` and never grabs it. Two new ioctls (`EVIOCGABS`, `EVIOCSCLOCKID`) put
+`sys.rs` at eight unsafe blocks, opcodes checked against the header values. Evidence, and its
+limit: table tests over synthetic sequences; `tests/evdev_parity.rs` re-expresses every
+fixture as the events the driver would send and replays it through both sensors, identical
+outputs except `palm_during_scroll` (evdev has no major axis, so no P3); and one read-only
+`palmrest record` of the real node with `source = "evdev"`, whose v2 header came back as
+x -1100..1258 res 26, y -1589..2047 res 70, 16 slots (the ioctls work), with 0 reads because
+nobody touched the mouse. It has not tracked a real finger, and no other mouse has run it.
+Recordings: v1 (`PALMREC\x01`, hidraw) is still what hidraw records write and every fixture
+is; v2 (`PALMREC\x02`) adds a JSON header naming the source and, for evdev, the geometry the
+bytes do not carry. `recording::parse` refuses a v2 evdev file rather than decoding it as
+hidraw.
+
+**F28. Known devices.** Discovery looks `HID_ID` up in `sensor::magic_mouse::KNOWN`, verified
+first: Bluetooth Magic Mouse 2 (`0005:004c:0269`, verified); Magic Mouse 2 on USB
+(`0003:05ac:0269`), the USB-C model (`004c`/`05ac`:`0323`) and the Magic Mouse 1
+(`0005:05ac:030d`), all untested. The Magic Mouse 1 is refused on hidraw with a pointer to
+`source = "evdev"`: it sends report 0x29 (different header, 6-byte touches), which `decode`
+does not read. The USB-C product id is the one listed for it, not read from a device.
+
+**F29. Every `TODO(untested)` left.** `sensor/evdev/mod.rs` (the whole sensor: fuzz, no contact
+size, SYN_DROPPED without an `EVIOCGMTSLOTS` re-read, a node opened mid-touch, P5 counts);
+`sensor/evdev/event.rs` (64-bit `input_event` layout only); `daemon/evdev.rs` (the capability
+rule, and 64-bit sysfs mask words); `sensor/frame.rs` (`Shape::Unmeasured`: no mm major axis
+for P3); `sensor/magic_mouse/mod.rs` (every model gets the Magic Mouse 2's surface);
+`sensor/magic_mouse/known.rs` (Magic Mouse 2 on USB, the USB-C model's id and layout, the Magic
+Mouse 1's report 0x29); `touch.rs` (12-bit wrap of deltas, now on every sensor's grid);
+`config/sections.rs` (P5 in the sensor's own counts).
