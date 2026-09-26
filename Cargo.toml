@@ -15,3 +15,9 @@ unsafe_code = "deny"
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
+serde_json = "1"
+toml = "1"
+notify = "8.2"
+# Not in the pinned block: poll, SOCK_SEQPACKET, eventfd, CLOCK_MONOTONIC and the ioctl
+# plumbing without libc's unsafe surface. See FINDINGS.
+rustix = { version = "1", features = ["event", "fs", "net", "time", "process"] }
