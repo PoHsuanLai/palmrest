@@ -6,9 +6,9 @@ Open items and standing facts. Design references are to quire's `design/NN` docu
 ## Open items
 
 **Manual acceptance, waiting for the user and the device.** Items 1-7 of 12.8 pass as tests
-(`tests/acceptance_1_decode.rs`, `acceptance_2_reference_feel.rs`,
-`acceptance_3_reference_cases.rs`, `acceptance_4_to_7.rs`), with the replay half of item 10
-(suppression) in `acceptance_4_to_7.rs` and the socket half in `daemon/socket/tests.rs`. Item 11 is
+(`tests/decode.rs`, `reference_feel.rs`, `reference_cases.rs`, `gestures_replay.rs`), with the
+replay half of item 10 (suppression) in `gestures_replay.rs` and the socket half in
+`daemon/socket/tests.rs`. Item 11 is
 measured on replay only (see Latency). Manual: **8** (virtual touchpad under
 `libinput debug-events`), **9** (calibration of the 0.25 mm/px factor), **10 live** (O2/O4
 silent while a real shell-host claims the pointer), **11 live** (HID read to socket / uinput

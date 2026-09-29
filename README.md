@@ -208,9 +208,9 @@ to the same outputs through `EvdevMultitouch`), against the fixtures in
 `tests/support/scenarios.rs` and must match it byte for byte
 (`PALMREST_REGEN_FIXTURES=1 cargo test --test fixtures_current` rewrites them).
 
-The reference-feel suite (`acceptance_2_reference_feel.rs`, `acceptance_3_reference_cases.rs`)
-checks the default scroll feel against the goldens in `tests/fixtures/reference/`. The goldens
-are frozen: they were produced once by the retired Python daemon, and nothing regenerates them.
-A change to a `feel_*` or `case_*` scenario therefore breaks the suite by design.
+The reference-feel suite (`reference_feel.rs`, `reference_cases.rs`) checks the default
+scroll feel against the goldens in `tests/fixtures/reference/`. The goldens are frozen: they
+were produced once by the retired Python daemon, and nothing regenerates them. A change
+to a `feel_*` or `case_*` scenario therefore breaks the suite by design.
 
 The latency measurement is `cargo test --release -p palmrest --lib latency -- --ignored --nocapture`.

@@ -300,7 +300,7 @@ fn mac_like_is_precise_slow_and_faster_on_a_flick() {
 
 #[test]
 fn the_default_curve_is_the_reference_feel() {
-    // The reference-feel suite (acceptance_2) runs with the defaults; here the explicit
+    // The reference-feel suite (`reference_feel.rs`) runs with the defaults; here the explicit
     // `Classic` is shown to be those defaults, frame for frame.
     let mut explicit = Config::default();
     explicit.feel.curve = Curve::Classic;
