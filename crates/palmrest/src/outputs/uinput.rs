@@ -44,9 +44,9 @@ pub const TOUCHPAD: Identity = Identity {
     vendor: 0x0001,
     product: 0x0002,
 };
-/// O4's identity: the Python daemon's device, so Plasma's saved settings still apply.
+/// O4's identity.
 pub const WHEEL: Identity = Identity {
-    name: "Magic Mouse Scroll",
+    name: "palmrest wheel",
     vendor: 0x0001,
     product: 0x0001,
 };
