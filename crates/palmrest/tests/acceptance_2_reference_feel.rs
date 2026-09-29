@@ -16,8 +16,8 @@ mod support;
 use palmrest::Out;
 use palmrest::config::{Config, ForeignOutput, Rejection};
 use palmrest::feel::Lock;
-use palmrest::protocol::{Phase, ToHost};
 use palmrest::replay::{Timing, replay};
+use palmrest_protocol::{Phase, ToHost};
 
 const SESSIONS: [&str; 5] = [
     "feel_slow",

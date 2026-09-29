@@ -2,8 +2,9 @@
 //! subscriber's `PointerOver` becoming the tracker's claim (acceptance 10's socket half).
 
 use palmrest::daemon::socket::{self, ToSocket};
-use palmrest::protocol::{
-    self, ActiveTouch, DeviceInfo, Filter, Over, PROTOCOL_VERSION, TapKind, ToDaemon, ToHost, Topic,
+use palmrest_protocol::{
+    self as protocol, ActiveTouch, DeviceInfo, Filter, Over, PROTOCOL_VERSION, TapKind, ToDaemon,
+    ToHost, Topic,
 };
 use rustix::fd::OwnedFd;
 use rustix::net::{AddressFamily, RecvFlags, SendFlags, SocketAddrUnix, SocketType};

@@ -8,10 +8,10 @@
 
 use crate::config::Config;
 use crate::feel::{Hold, Sample};
-use crate::protocol::TapKind;
 use crate::sensor::lattice::Ellipse;
 use crate::time::Mono;
 use crate::touch::Point;
+use palmrest_protocol::TapKind;
 
 /// Whether a touchdown can still be a tap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

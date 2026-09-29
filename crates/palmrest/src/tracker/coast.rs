@@ -11,8 +11,8 @@ use super::out::Out;
 use crate::config::{Config, TouchpadSettings};
 use crate::feel::{Drag, HI_RES_PER_DETENT, UnitCarry, WheelDelta};
 use crate::outputs::pad::{Pad, PadFrame};
-use crate::protocol::Axis;
 use crate::time::Mono;
+use palmrest_protocol::Axis;
 
 /// Where the glide goes.
 #[derive(Debug, Clone, Copy, PartialEq)]

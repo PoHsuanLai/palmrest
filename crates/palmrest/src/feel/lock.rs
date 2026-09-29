@@ -10,9 +10,9 @@ use super::curve::CurveParams;
 use super::gain::{HI_RES_PER_DETENT, RepeatGain, raw_per_hi_res, velocity_gain};
 use super::quantize::{Quanta, Quantizer};
 pub use super::rule::{Lock, LockParams, Threshold, decide};
-use crate::protocol::Axis;
 use crate::time::Mono;
 use crate::touch::{Point, TouchId};
+use palmrest_protocol::Axis;
 
 /// A contact the lock follows: its id and where it is now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

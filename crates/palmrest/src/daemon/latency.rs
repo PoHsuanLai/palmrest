@@ -4,11 +4,11 @@
 
 use crate::config::Config;
 use crate::outputs::events::{PadEncoder, key_events, wheel_events};
-use crate::protocol;
 use crate::recording::{Record, RecordedSource};
 use crate::replay::{Timing, feed_from};
 use crate::stamp::StampClock;
 use crate::tracker::{Out, Tracker};
+use palmrest_protocol as protocol;
 use std::time::{Duration, Instant};
 
 /// Percentiles of one path's per-read latency.

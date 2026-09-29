@@ -7,11 +7,11 @@ mod support;
 use palmrest::action::Action;
 use palmrest::config::{Config, Rejection};
 use palmrest::keys::{Key, KeyCombo};
-use palmrest::protocol::{Axis, Over, Phase, TapKind, ToHost};
 use palmrest::recording::Record;
 use palmrest::replay::{Timing, feed, outs, replay};
 use palmrest::stamp::StampClock;
 use palmrest::{Out, Tracker};
+use palmrest_protocol::{Axis, Over, Phase, TapKind, ToHost};
 
 fn run(name: &str) -> Vec<Out> {
     outs(&replay(
@@ -261,7 +261,7 @@ fn a_moving_mouse_needs_twice_the_travel_to_scroll() {
 fn every_may_begin_is_closed_exactly_once() {
     for (name, records) in support::scenarios::all() {
         let all = outs(&replay(&records, Config::default(), Timing::Arrival));
-        let mut open: Option<palmrest::protocol::GestureId> = None;
+        let mut open: Option<palmrest_protocol::GestureId> = None;
         for h in support::host(&all) {
             if let ToHost::Scroll { gesture, phase, .. } = h {
                 match phase {

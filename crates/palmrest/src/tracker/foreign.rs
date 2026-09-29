@@ -8,8 +8,8 @@ use crate::config::{Config, ForeignMomentum, ForeignOutput};
 use crate::feel::{ReleaseRule, ReleaseSamples, UnitCarry, WheelDelta};
 use crate::gestures::ScrollEvent;
 use crate::outputs::pad::Pad;
-use crate::protocol::{Axis, Over, Phase, ToHost};
 use crate::time::Mono;
+use palmrest_protocol::{Axis, Over, Phase, ToHost};
 
 /// What foreign clients have been sent: the pad's contacts, a running glide, and the running
 /// stroke's samples for its release velocity.

@@ -5,7 +5,7 @@ use crate::config::G4Mode;
 use crate::feel::WheelDelta;
 use crate::keys::KeyCombo;
 use crate::outputs::pad::PadFrame;
-use crate::protocol::{Over, TapKind, ToHost};
+use palmrest_protocol::{Over, TapKind, ToHost};
 use serde::{Deserialize, Serialize};
 
 /// One effect of a report, in the order it must happen.

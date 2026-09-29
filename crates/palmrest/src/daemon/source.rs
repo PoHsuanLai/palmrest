@@ -5,10 +5,10 @@ use super::discover::{self, SYS_HIDRAW};
 use super::evdev::{self, SYS_INPUT, UDEV_DATA};
 use super::hidraw::{self, Access, READ_LEN};
 use crate::config::DeviceSource;
-use crate::protocol::DeviceInfo;
 use crate::recording::RecordedSource;
 use crate::sensor::magic_mouse::{Layout, Support};
 use crate::sensor::{EvdevMultitouch, EvdevSpec, MagicMouseHid, Sensor, evdev::EVENT_LEN};
+use palmrest_protocol::DeviceInfo;
 use rustix::fd::OwnedFd;
 use std::path::Path;
 

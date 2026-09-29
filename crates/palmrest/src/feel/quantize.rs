@@ -3,7 +3,7 @@
 //! Only the wheel device quantises; the socket carries exact px. The reference-feel goldens pin
 //! it byte for byte.
 
-use crate::protocol::Axis;
+use palmrest_protocol::Axis;
 use serde::{Deserialize, Serialize};
 
 /// Remainders carried between samples of one locked stroke.

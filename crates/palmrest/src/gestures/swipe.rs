@@ -8,10 +8,10 @@
 
 use crate::config::{Config, SwipeRepeat};
 use crate::feel::{Hold, Sample};
-use crate::protocol::{GestureId, Phase};
 use crate::sensor::lattice::{Along, units};
 use crate::time::Mono;
 use crate::touch::TouchId;
+use palmrest_protocol::{GestureId, Phase};
 
 /// Which way the fingers moved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

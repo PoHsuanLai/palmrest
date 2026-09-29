@@ -11,7 +11,8 @@ use palmrest::recording::{self, Record};
 use palmrest::sensor::magic_mouse::encode::encode;
 use palmrest::sensor::magic_mouse::report::{Buttons, Motion, Report, Stamp};
 use palmrest::touch::{Point, RawTouch, TouchId, TouchState};
-use palmrest::{Mono, Out, ToHost};
+use palmrest::{Mono, Out};
+use palmrest_protocol::ToHost;
 use std::path::PathBuf;
 
 /// A firm, finger-sized contact at `(x, y)` in the kernel frame.
@@ -136,9 +137,9 @@ pub fn host(outs: &[Out]) -> Vec<ToHost> {
 pub fn scrolls(
     outs: &[Out],
 ) -> Vec<(
-    palmrest::protocol::Phase,
+    palmrest_protocol::Phase,
     u8,
-    Option<palmrest::protocol::Axis>,
+    Option<palmrest_protocol::Axis>,
     f32,
     f32,
 )> {

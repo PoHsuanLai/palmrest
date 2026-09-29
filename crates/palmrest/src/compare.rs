@@ -2,10 +2,10 @@
 //! recorded session can be judged by how far each curve scrolls it and how hard it accelerates.
 
 use crate::config::{Config, Curve};
-use crate::protocol::{Phase, ToHost};
 use crate::recording::{Record, RecordedSource};
 use crate::replay::{Timing, outs, replay_from};
 use crate::tracker::Out;
+use palmrest_protocol::{Phase, ToHost};
 
 /// What one curve made of a recording (socket px, finger direction).
 #[derive(Debug, Clone, Copy, PartialEq)]

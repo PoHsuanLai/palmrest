@@ -9,11 +9,11 @@ use super::socket::{SocketHandle, ToSocket};
 use super::source::{self, Opened, Purpose};
 use crate::action::Desktop;
 use crate::config::Loaded;
-use crate::protocol::Over;
 use crate::recording::Record;
 use crate::replay::{Timing, feed_from};
 use crate::stamp::StampClock;
 use crate::tracker::{Out, Tracker};
+use palmrest_protocol::Over;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 

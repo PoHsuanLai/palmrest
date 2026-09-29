@@ -8,10 +8,10 @@ use palmrest::config::{Config, Curve, ForeignMomentum, ForeignOutput};
 use palmrest::feel::{Drag, ReleaseRule, ReleaseSamples};
 use palmrest::outputs::pad::{CENTRE, PadFrame};
 use palmrest::outputs::{Emitted, Emitter, RecordingEmitter};
-use palmrest::protocol::{Over, Phase, ToHost};
 use palmrest::replay::{Step, Timing, feed, replay};
 use palmrest::stamp::StampClock;
 use palmrest::{Mono, Out, Tracker};
+use palmrest_protocol::{Over, Phase, ToHost};
 
 fn ours(output: ForeignOutput) -> Config {
     Config {

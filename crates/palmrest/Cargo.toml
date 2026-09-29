@@ -11,6 +11,7 @@ description = "Magic Mouse gesture daemon: hidraw decoder, scroll feel, gestures
 workspace = true
 
 [dependencies]
+palmrest-protocol = { path = "../palmrest-protocol" }
 serde.workspace = true
 thiserror.workspace = true
 serde_json.workspace = true

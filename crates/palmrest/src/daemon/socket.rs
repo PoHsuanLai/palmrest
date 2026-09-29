@@ -6,7 +6,9 @@
 //! the reader never blocks on a slow subscriber: a subscriber whose queue is full misses that
 //! message rather than delaying everyone else's scroll.
 
-use crate::protocol::{self, DeviceInfo, Filter, Over, PROTOCOL_VERSION, ToDaemon, ToHost};
+use palmrest_protocol::{
+    self as protocol, DeviceInfo, Filter, Over, PROTOCOL_VERSION, ToDaemon, ToHost,
+};
 use rustix::event::{EventfdFlags, PollFd, PollFlags, eventfd, poll};
 use rustix::fd::{AsFd, OwnedFd};
 use rustix::io::Errno;

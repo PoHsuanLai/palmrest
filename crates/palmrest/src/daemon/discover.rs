@@ -3,8 +3,8 @@
 //! The uevent's `HID_ID` is parsed as `bus:vendor:product` and looked up field by field in
 //! `sensor::magic_mouse::KNOWN`.
 
-use crate::protocol::DeviceInfo;
 use crate::sensor::magic_mouse::{KnownDevice, known};
+use palmrest_protocol::DeviceInfo;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 

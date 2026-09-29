@@ -163,11 +163,21 @@ name = "palmrest"
 version = "0.1.0"
 dependencies = [
  "notify",
+ "palmrest-protocol",
  "rustix",
  "serde",
  "serde_json",
  "thiserror",
  "toml",
+]
+
+[[package]]
+name = "palmrest-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

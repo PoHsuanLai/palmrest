@@ -6,8 +6,8 @@
 //! a gesture open.
 
 use crate::feel::{AxisLock, Hold, Lock, LockEvent, LockParams, Quanta, Sample};
-use crate::protocol::{Axis, GestureId, Phase};
 use crate::time::Mono;
+use palmrest_protocol::{Axis, GestureId, Phase};
 
 /// How far the current gesture has got.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

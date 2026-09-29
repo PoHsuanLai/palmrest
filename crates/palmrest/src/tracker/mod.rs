@@ -17,9 +17,9 @@ use crate::gestures::{
     Bands, ClickGuard, Contacts, FingerDirection, MotionWindow, Moving, OneSwipe, PalmTurn, Press,
     ScrollEvent, ScrollG, SwipeEvent, SwipeG, TapG,
 };
-use crate::protocol::{ActiveTouch, Over, ToHost};
 use crate::sensor::{Frame, Surface, magic_mouse};
 use crate::time::Mono;
+use palmrest_protocol::{ActiveTouch, Over, ToHost};
 
 /// Every piece of gesture state between reports.
 #[derive(Debug, Clone, PartialEq)]
