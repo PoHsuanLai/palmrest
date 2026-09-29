@@ -8,53 +8,12 @@
 
 use super::curve::CurveParams;
 use super::gain::{HI_RES_PER_DETENT, RepeatGain, raw_per_hi_res, velocity_gain};
+use super::lock_event::{Hold, LockEvent, Move, Sample};
 use super::quantize::{Quanta, Quantizer};
-pub use super::rule::{Lock, LockParams, Threshold, decide};
+use super::rule::{Lock, LockParams, decide};
 use crate::time::Mono;
-use crate::touch::{Point, TouchId};
+use crate::touch::TouchId;
 use palmrest_protocol::Axis;
-
-/// A contact the lock follows: its id and where it is now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Sample {
-    pub id: TouchId,
-    pub at: Point,
-}
-
-/// Whether a physical click is holding gestures off (P4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Hold {
-    Open,
-    Held,
-}
-
-/// One sample's scroll on the locked axis.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Move {
-    pub axis: Axis,
-    pub raw: i32,
-    /// Px in finger direction, all gains applied: the wheel stream before truncation.
-    pub px: f64,
-    /// The wheel device's share of this sample.
-    pub quanta: Quanta,
-    /// The gain over the base ratio this sample was scrolled with.
-    pub gain: f64,
-}
-
-/// What one report did to the lock, in order.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum LockEvent {
-    /// Fewer than one or more than two contacts: the stroke is over.
-    Reset,
-    /// A new contact set landed (or the set changed).
-    Start { fingers: u8 },
-    /// The lock timed out on this report's delta.
-    Unlocked,
-    /// The lock was decided.
-    Locked(Lock),
-    /// Scroll on the locked axis.
-    Moved(Move),
-}
 
 /// The lock between reports.
 #[derive(Debug, Clone, PartialEq)]
@@ -287,112 +246,4 @@ impl AxisLock {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use std::time::Duration;
-
-    pub(crate) const PARAMS: LockParams = LockParams {
-        threshold: Threshold::both(40),
-        ratio: 1.5,
-        timeout: Duration::from_millis(250),
-        speed: 32,
-        velocity_gain_max: 2.0,
-        repeat_gain_max: 1.0,
-        detent_px: 60.0,
-        curve: CurveParams::Classic,
-    };
-
-    fn one(x: i32, y: i32) -> Vec<Sample> {
-        vec![Sample {
-            id: TouchId(1),
-            at: Point::new(x, y),
-        }]
-    }
-
-    fn run(lock: AxisLock, frames: &[(u64, Vec<Sample>)]) -> (AxisLock, Vec<LockEvent>) {
-        frames.iter().fold((lock, vec![]), |(l, mut all), (ms, c)| {
-            let (l, ev) = l.step(c, Mono::from_millis(*ms), &PARAMS, Hold::Open);
-            all.extend(ev);
-            (l, all)
-        })
-    }
-
-    #[test]
-    fn locking_drops_the_pending_motion() {
-        let frames: Vec<_> = (0..10)
-            .map(|i| (10 + i * 8, one(0, i as i32 * 10)))
-            .collect();
-        let (l, ev) = run(AxisLock::default(), &frames);
-        assert_eq!(l.lock(), Lock::Y);
-        let raw: Vec<i32> = ev
-            .iter()
-            .filter_map(|e| {
-                if let LockEvent::Moved(m) = e {
-                    Some(m.raw)
-                } else {
-                    None
-                }
-            })
-            .collect();
-        // Frames 1..=4 accumulate 40 and lock; frames 5..=9 scroll 10 each.
-        assert_eq!(raw, [10; 5]);
-        assert!(matches!(ev[0], LockEvent::Start { fingers: 1 }));
-        assert_eq!(ev[1], LockEvent::Locked(Lock::Y));
-    }
-
-    #[test]
-    fn a_pause_unlocks_on_the_next_delta() {
-        let frames = vec![
-            (0, one(0, 0)),
-            (8, one(0, 50)),
-            (16, one(0, 60)),
-            (400, one(0, 70)),
-        ];
-        let (l, ev) = run(AxisLock::default(), &frames);
-        assert_eq!(
-            l.lock(),
-            Lock::Free {
-                pend_x: 0,
-                pend_y: 10
-            }
-        );
-        assert_eq!(ev.last(), Some(&LockEvent::Unlocked));
-    }
-
-    #[test]
-    fn zero_delta_does_not_refresh_motion_time() {
-        // Nothing moved: the motion time is not refreshed.
-        let frames = vec![
-            (0, one(0, 0)),
-            (8, one(0, 50)),
-            (200, one(0, 50)),
-            (300, one(0, 60)),
-        ];
-        let (_, ev) = run(AxisLock::default(), &frames);
-        assert_eq!(ev.last(), Some(&LockEvent::Unlocked));
-    }
-
-    #[test]
-    fn held_click_accumulates_nothing() {
-        let (l, _) = AxisLock::default().step(&one(0, 0), Mono(0), &PARAMS, Hold::Open);
-        let (l, ev) = l.step(&one(0, 100), Mono::from_millis(8), &PARAMS, Hold::Held);
-        assert!(ev.is_empty());
-        assert_eq!(l.lock(), FREE);
-        let (_, ev) = l.step(&one(0, 110), Mono::from_millis(16), &PARAMS, Hold::Open);
-        assert!(ev.is_empty(), "only the 10 units after the hold count");
-    }
-
-    #[test]
-    fn three_contacts_reset_once() {
-        let three: Vec<Sample> = (1..=3)
-            .map(|i| Sample {
-                id: TouchId(i),
-                at: Point::new(0, 0),
-            })
-            .collect();
-        let frames = vec![(0, one(0, 0)), (8, three.clone()), (16, three)];
-        let (l, ev) = run(AxisLock::default(), &frames);
-        assert_eq!(l.set(), None);
-        assert_eq!(ev, [LockEvent::Start { fingers: 1 }, LockEvent::Reset]);
-    }
-}
+mod tests;

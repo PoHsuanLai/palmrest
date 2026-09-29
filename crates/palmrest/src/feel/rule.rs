@@ -2,6 +2,8 @@
 //! motion locks to, if any.
 
 use super::curve::CurveParams;
+use crate::config::{Config, Um};
+use crate::sensor::lattice::{Along, units};
 use std::time::Duration;
 
 /// Accumulated motion an axis needs before it can lock, per axis, in grid units.
@@ -62,6 +64,32 @@ pub fn decide(x: i32, y: i32, fingers: usize, p: &LockParams) -> Option<Lock> {
     } else {
         lock
     })
+}
+
+impl LockParams {
+    /// The lock's parameters from the config, with the P5 threshold multiplier applied when
+    /// the mouse is moving.
+    pub fn from_config(c: &Config, threshold_multiplier: f64) -> Self {
+        let s = &c.scroll;
+        Self {
+            threshold: Threshold {
+                x: scaled(s.lock_threshold_x_um, Along::X, threshold_multiplier),
+                y: scaled(s.lock_threshold_y_um, Along::Y, threshold_multiplier),
+            },
+            ratio: s.lock_ratio.ratio(),
+            timeout: s.lock_timeout_ms.duration(),
+            speed: s.speed.0,
+            velocity_gain_max: s.velocity_gain_max.ratio(),
+            repeat_gain_max: s.repeat_gain_max.ratio(),
+            detent_px: f64::from(s.detent_px.0),
+            curve: CurveParams::from_settings(&c.feel),
+        }
+    }
+}
+
+/// A threshold on the grid times the P5 multiplier, rounded as the reference feel rounds it.
+fn scaled(um: Um, axis: Along, multiplier: f64) -> i32 {
+    (f64::from(units(um, axis)) * multiplier).round() as i32
 }
 
 #[cfg(test)]
