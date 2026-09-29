@@ -6,7 +6,7 @@
 //! measures a Euclidean distance, or compares both axes against one number, is anisotropic in
 //! millimetres; it has an `_x_um` / `_y_um` pair.
 
-use super::enums::{ContactNibblePolicy, Curve, DeviceSource, G4Mode, SwipeRepeat, WorkspaceMode};
+use super::enums::{ContactNibblePolicy, Curve, DeviceSource, G4Mode, SwipeRepeat};
 use super::units::{Count, Fraction, Ms, Percent, Px, Um, Units};
 use crate::action::ActionMap;
 use crate::settings_struct;
@@ -34,7 +34,6 @@ settings_struct! {
         /// Vertical travel past which a pair counts as scrolling.
         vertical_max_um: Um = Um(2143), in Um(286) => Um(14286);
         cooldown_ms: Ms = Ms(500), in Ms(0) => Ms(2000);
-        workspace_mode: WorkspaceMode = WorkspaceMode::Trigger;
         repeat: SwipeRepeat = SwipeRepeat::AfterCooldown;
     }
 }

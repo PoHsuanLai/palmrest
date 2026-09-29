@@ -63,7 +63,6 @@ crate::serde_settings!(
     ForeignOutput,
     ForeignMomentum,
     super::enums::Curve,
-    super::enums::WorkspaceMode,
     super::enums::SwipeRepeat,
     super::enums::G4Mode,
     super::enums::ContactNibblePolicy,
@@ -133,7 +132,11 @@ mod tests {
         let keys: Vec<&str> = warn.iter().map(|w| w.key.as_str()).collect();
         assert_eq!(
             keys,
-            ["rejection", "scroll.lock_threshold_x_um", "scroll.lock_ratio"]
+            [
+                "rejection",
+                "scroll.lock_threshold_x_um",
+                "scroll.lock_ratio"
+            ]
         );
     }
 

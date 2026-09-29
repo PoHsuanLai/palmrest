@@ -7,7 +7,7 @@
 //! in the direction the fingers moved and re-anchors, so a long drag keeps going after the
 //! cooldown. The same pair also feeds the host a raw `Swipe` stream for the live model.
 
-use crate::config::{Config, SwipeRepeat, WorkspaceMode};
+use crate::config::{Config, SwipeRepeat};
 use crate::feel::{Hold, Sample};
 use crate::protocol::{GestureId, Phase};
 use crate::sensor::lattice::{Along, units};
@@ -175,8 +175,7 @@ impl SwipeG {
             let cooled = self
                 .last_fire
                 .is_none_or(|t| now.since(t) >= s.cooldown_ms.duration());
-            let allowed = s.workspace_mode == WorkspaceMode::Trigger
-                && !(s.repeat == SwipeRepeat::OncePerGesture && p.fired == Fired::Once);
+            let allowed = !(s.repeat == SwipeRepeat::OncePerGesture && p.fired == Fired::Once);
             if cooled && allowed {
                 ev.push(SwipeEvent::Fire(dir));
                 (

@@ -10,7 +10,7 @@ pub mod watch;
 
 pub use enums::{
     ContactNibblePolicy, Curve, DeviceSource, ForeignMomentum, ForeignOutput, G4Mode, Rejection,
-    SwipeRepeat, WorkspaceMode,
+    SwipeRepeat,
 };
 pub use file::{Config, ParseError, parse, to_toml};
 pub use lenient::Warning;

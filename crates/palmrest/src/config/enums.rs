@@ -24,15 +24,6 @@ pub enum ForeignOutput {
     Off,
 }
 
-/// Two-finger horizontal swipe: fire once per threshold, or track live (later).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkspaceMode {
-    #[default]
-    Trigger,
-    Live,
-}
-
 /// Whether a long two-finger drag switches again after the cooldown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
