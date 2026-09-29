@@ -3,6 +3,8 @@
 //! The acceptance tests and the reference-feel comparison run through here, so what they check
 //! is the daemon's own path from bytes to outputs, not a test-only shortcut.
 
+pub mod compare;
+
 use crate::config::Config;
 use crate::feel::Lock;
 use crate::recording::{Record, RecordedSource};

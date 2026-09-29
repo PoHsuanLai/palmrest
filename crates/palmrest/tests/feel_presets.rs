@@ -3,11 +3,11 @@
 
 mod support;
 
-use palmrest::compare::compare_curves;
 use palmrest::config::{Config, Curve, ForeignMomentum, ForeignOutput};
 use palmrest::feel::{Drag, ReleaseRule, ReleaseSamples};
 use palmrest::outputs::pad::{CENTRE, PadFrame};
 use palmrest::outputs::{Emitted, Emitter, RecordingEmitter};
+use palmrest::replay::compare::compare_curves;
 use palmrest::replay::{Step, Timing, feed, replay};
 use palmrest::stamp::StampClock;
 use palmrest::{Mono, Out, Tracker};

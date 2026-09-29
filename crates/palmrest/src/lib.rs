@@ -7,7 +7,6 @@
 
 pub mod action;
 pub mod command;
-pub mod compare;
 pub mod config;
 pub(crate) mod daemon;
 pub mod feel;
