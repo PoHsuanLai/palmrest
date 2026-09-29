@@ -1,10 +1,10 @@
-//! The scroll axis lock: the Python daemon's `ScrollAxisLock`, as a value.
+//! The scroll axis lock, as a value.
 //!
 //! Settled behaviour (11.3.9): accumulate centroid deltas until one axis passes the threshold
 //! and dominates by the ratio; lock it and drop the accumulated motion so locking never jumps;
 //! a delta arriving at least the timeout after the previous motion unlocks; two fingers locking
-//! X become `Blocked`, because that motion belongs to the workspace swipe. Every branch below
-//! mirrors a branch of the Python class so the parity fixtures can compare decisions per report.
+//! X become `Blocked`, because that motion belongs to the workspace swipe. The reference-feel
+//! goldens compare its decision on every report.
 
 use super::curve::CurveParams;
 use super::gain::{HI_RES_PER_DETENT, RepeatGain, raw_per_hi_res, velocity_gain};
@@ -361,7 +361,7 @@ mod tests {
 
     #[test]
     fn zero_delta_does_not_refresh_motion_time() {
-        // Python returns before touching last_motion_time when nothing moved.
+        // Nothing moved: the motion time is not refreshed.
         let frames = vec![
             (0, one(0, 0)),
             (8, one(0, 50)),

@@ -1,5 +1,5 @@
 //! The two opt-in feel presets, end to end through replay and the `RecordingEmitter`:
-//! `feel.curve = "mac_like"` and `foreign_momentum = "ours"` (FINDINGS F22-F24).
+//! `feel.curve = "mac_like"` and `foreign_momentum = "ours"`.
 
 mod support;
 
@@ -242,7 +242,7 @@ fn on_the_wheel_the_glide_is_a_decaying_run_of_hi_res_frames() {
     let (frames, ended) = written(&replay(&records, toolkit, Timing::Arrival));
     assert!(
         frames.iter().all(|w| w.at <= ended),
-        "the Python wheel has no glide"
+        "the toolkit wheel has no glide"
     );
 
     let cfg = ours(ForeignOutput::Wheel);
@@ -299,9 +299,9 @@ fn mac_like_is_precise_slow_and_faster_on_a_flick() {
 }
 
 #[test]
-fn the_default_curve_is_the_python_feel() {
-    // The parity suite (acceptance_2) runs with the defaults; here the explicit `Classic` is
-    // shown to be those defaults, frame for frame.
+fn the_default_curve_is_the_reference_feel() {
+    // The reference-feel suite (acceptance_2) runs with the defaults; here the explicit
+    // `Classic` is shown to be those defaults, frame for frame.
     let mut explicit = Config::default();
     explicit.feel.curve = Curve::Classic;
     explicit.foreign_momentum = ForeignMomentum::Toolkit;

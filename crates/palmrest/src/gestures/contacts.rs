@@ -251,11 +251,11 @@ mod tests {
             (5, false, false),
             (7, false, false),
         ];
-        for &(n, python, kernel) in CASES {
+        for &(n, one_to_four, kernel) in CASES {
             t.state = TouchState::from_nibble(n);
             assert_eq!(
                 is_contact(&t, ContactNibblePolicy::OneToFour),
-                python,
+                one_to_four,
                 "nibble {n}"
             );
             assert_eq!(

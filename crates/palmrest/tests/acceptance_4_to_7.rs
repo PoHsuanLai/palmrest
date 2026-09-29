@@ -340,13 +340,9 @@ fn a_claimed_pointer_silences_every_foreign_output() {
     }
     assert!(!all.iter().any(|o| matches!(o, Out::Wheel(_))));
     assert!(
-        outs(&replay(
-            &support::load("feel_fast"),
-            wheel,
-            Timing::Arrival
-        ))
-        .iter()
-        .any(|o| matches!(o, Out::Wheel(_)))
+        outs(&replay(&support::load("feel_fast"), wheel, Timing::Arrival))
+            .iter()
+            .any(|o| matches!(o, Out::Wheel(_)))
     );
 }
 

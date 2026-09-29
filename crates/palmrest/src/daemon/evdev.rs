@@ -201,7 +201,7 @@ mod tests {
                 Eligibility::Touchpad,
             ),
             (
-                "the Python daemon's wheel",
+                "a uinput wheel device",
                 Caps {
                     abs: Bits::parse("0"),
                     rel: Bits::parse("1940"),

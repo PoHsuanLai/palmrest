@@ -1,10 +1,7 @@
-//! Acceptance 12.8 item 3: every case of the Python daemon's `test_kde_gestures.py`, twice:
-//! against the matching palmrest unit (`AxisLock` for `ScrollAxisLock`, `SwipeG` for
-//! `DesktopSwipe`) with the test's own parameters, and end to end through `replay` of the
-//! committed fixture with the same points.
-//!
-//! `test_removed_gestures_are_gone` asserts the absence of Python names and has no palmrest
-//! counterpart (FINDINGS).
+//! Acceptance 12.8 item 3: the reference gesture cases, twice: against the matching palmrest
+//! unit (`AxisLock`, `SwipeG`) with the case's own parameters, and end to end through `replay`
+//! of the committed fixture with the same points. The cases and their expected values are
+//! frozen from the retired Python daemon's test suite; points are in its unsigned reading.
 
 mod support;
 
@@ -19,9 +16,9 @@ use palmrest::touch::{Point, TouchId};
 use palmrest::{Mono, Out};
 use std::time::Duration;
 
-// ---- the Python helpers -------------------------------------------------------------------
+// ---- the case helpers ---------------------------------------------------------------------
 
-/// `touch(x, y, id)` in the Python reading, as a lock sample in the kernel frame.
+/// `touch(x, y, id)` in the unsigned reading, as a lock sample in the kernel frame.
 fn touch(x: i32, y: i32, id: u8) -> Sample {
     let t = support::unsigned_finger(id, x, y);
     Sample { id: t.id, at: t.at }
@@ -39,7 +36,7 @@ const PARAMS: LockParams = LockParams {
     curve: CurveParams::Classic,
 };
 
-/// `drag(filt, points, start=10.0, step=0.008)`: the summed hi-res (h, v) in Python's frame.
+/// `drag(filt, points, start=10.0, step=0.008)`: the summed hi-res (h, v) in the wheel's frame.
 fn drag(
     lock: AxisLock,
     points: &[Vec<Sample>],
@@ -75,7 +72,7 @@ fn points(n: i32, f: impl Fn(i32) -> Vec<Sample>) -> Vec<Vec<Sample>> {
     (0..n).map(f).collect()
 }
 
-/// The config the Python tests construct, for the end-to-end runs.
+/// The config the cases construct, for the end-to-end runs.
 fn reference_config() -> Config {
     let mut c = Config {
         rejection: Rejection::Off,
@@ -360,7 +357,7 @@ fn one_finger_never_switches_desktop() {
 }
 
 #[test]
-fn the_ported_points_are_the_python_points() {
+fn the_unsigned_points_convert_to_the_kernel_frame() {
     // The conversion the ports rely on: unsigned 12-bit in, kernel frame out.
     assert_eq!(
         touch(3000, 3000, 2),

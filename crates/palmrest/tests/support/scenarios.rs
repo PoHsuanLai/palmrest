@@ -1,10 +1,10 @@
 //! Every synthesised fixture, by name. The committed `.bin` files are these, byte for byte
 //! (`tests/fixtures_current.rs` checks it; `PALMREST_REGEN_FIXTURES=1` rewrites them).
 //!
-//! Coordinates are the kernel frame (+x right, +y toward the user) unless a scenario ports a
-//! Python test, which states its points in the Python daemon's unsigned reading.
+//! Coordinates are the kernel frame (+x right, +y toward the user) unless a scenario is a
+//! reference case (`case_*`), which states its points in the unsigned reading.
 
-use super::case_points::{drag, case_count_change, case_long_drag};
+use super::case_points::{case_count_change, case_long_drag, drag};
 use super::sessions::{feel_diagonal, feel_fast, feel_fingers, feel_flicks, feel_slow};
 use super::strokes::{
     click_during_scroll, mouse_moving, one_finger_swipe, pair_stroke, palm_during_scroll,

@@ -3,7 +3,8 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Palm and rest rejection P1-P3 and P5; `Off` exists for bit-exact Python comparison.
+/// Palm and rest rejection P1-P3 and P5; `Off` exists for the bit-exact
+/// reference-feel comparison.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Rejection {

@@ -4,7 +4,7 @@
 //! Mouse's contact size and major axis decide (P1, P3), which evdev does not carry.
 //!
 //! Synthetic: the kernel is modelled as reporting only touches in MakeTouch or Touching, and
-//! its fuzz filter is not modelled (FINDINGS F25).
+//! its fuzz filter is not modelled.
 
 mod support;
 

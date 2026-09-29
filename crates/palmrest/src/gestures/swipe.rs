@@ -1,5 +1,4 @@
-//! G5: two-finger horizontal travel switches workspaces (Trigger mode), the Python daemon's
-//! `DesktopSwipe` as a value.
+//! G5: two-finger horizontal travel switches workspaces, as a value.
 //!
 //! Travel is the pair's centroid from where it landed, on the grid. Vertical travel that
 //! dominates past `vertical_max_um` re-anchors (the pair is scrolling; "dominates" compares grid
@@ -64,7 +63,7 @@ pub enum SwipeEvent {
         phase: Phase,
         dx_units: f32,
     },
-    /// Trigger mode fired.
+    /// The swipe fired.
     Fire(FingerDirection),
 }
 

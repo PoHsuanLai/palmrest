@@ -27,7 +27,7 @@ pub fn finger(id: u8, x: i32, y: i32) -> RawTouch {
     }
 }
 
-/// A contact given in the Python daemon's unsigned reading, converted to the kernel frame.
+/// A contact given in the unsigned reading (12-bit, y down), converted to the kernel frame.
 pub fn unsigned_finger(id: u8, x: i32, y: i32) -> RawTouch {
     let k = |v: i32| {
         if (v & 0xfff) >= 0x800 {

@@ -12,7 +12,7 @@ pub struct Threshold {
 }
 
 impl Threshold {
-    /// The same number of grid units on both axes (the Python daemon's single threshold).
+    /// The same number of grid units on both axes.
     pub const fn both(units: i32) -> Self {
         Self { x: units, y: units }
     }

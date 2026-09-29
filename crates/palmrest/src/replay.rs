@@ -1,7 +1,7 @@
 //! `palmrest replay`: a recording through the pure core, exactly as the reader thread drives it.
 //!
-//! The acceptance tests and the parity comparison run through here, so what they check is the
-//! daemon's own path from bytes to outputs, not a test-only shortcut.
+//! The acceptance tests and the reference-feel comparison run through here, so what they check
+//! is the daemon's own path from bytes to outputs, not a test-only shortcut.
 
 use crate::config::Config;
 use crate::feel::Lock;
@@ -14,7 +14,7 @@ use crate::tracker::{Out, Tracker};
 /// Where event times come from during a replay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Timing {
-    /// The recorded arrival times, as-is (fixtures, parity).
+    /// The recorded arrival times, as-is (fixtures, reference feel).
     Arrival,
     /// Through the timestamp calibration, as the live daemon does.
     Calibrated,
@@ -25,7 +25,7 @@ pub enum Timing {
 pub struct Step {
     pub at: Mono,
     pub outs: Vec<Out>,
-    /// The scroll lock decision after this record (parity compares it).
+    /// The scroll lock decision after this record (the reference-feel suite compares it).
     pub lock: Lock,
     pub error: Option<SensorError>,
 }

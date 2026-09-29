@@ -8,9 +8,8 @@
 // (a contact's travel from its landing point) likelier. Unverified on any other device.
 //!
 //! Coordinates follow the kernel's reading (signed 12-bit, y negated), so `+x` is rightwards
-//! across the mouse and `+y` toward the user. The Python daemon read them unsigned and fixed
-//! wraps afterwards; `wrap_delta` gives the same deltas for both readings, which is what makes
-//! the parity fixtures comparable at all.
+//! across the mouse and `+y` toward the user. The reference-feel cases state points unsigned
+//! with wraps fixed afterwards; `wrap_delta` gives the same deltas for both readings.
 
 use serde::{Deserialize, Serialize};
 
@@ -115,7 +114,7 @@ pub fn sign_extend_12(raw: u16) -> i32 {
 /// The shortest signed distance from `old` to `new` on a 12-bit circle.
 ///
 /// For the kernel reading this is plain subtraction (the surface never spans half the circle);
-/// for the Python reading it undoes the wrap. Both give the same answer, by construction.
+/// for the unsigned reading it undoes the wrap. Both give the same answer, by construction.
 pub fn wrap_delta(new: i32, old: i32) -> i32 {
     let d = new - old;
     if d > COORD_SPAN / 2 {

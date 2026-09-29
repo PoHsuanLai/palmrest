@@ -1,8 +1,7 @@
 //! Raw units to px: the base ratio, the velocity gain and the repeat gain (12.3.8, 11.5.5).
 //!
-//! The arithmetic is written in the Python daemon's order, operation for operation, because the
-//! parity fixtures compare truncated wheel units and a reordered float product can move a
-//! truncation by one.
+//! The operation order is fixed, because the reference-feel goldens compare truncated wheel
+//! units and a reordered float product can move a truncation by one.
 
 use crate::time::Mono;
 use std::time::Duration;

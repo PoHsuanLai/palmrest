@@ -56,7 +56,8 @@ impl InputEvent {
     }
 }
 
-/// A wheel frame in the Python device's event order.
+/// A wheel frame's events: detents before hi-res, horizontal before vertical, zeros skipped,
+/// then SYN.
 pub fn wheel_events(d: &WheelDelta) -> Vec<InputEvent> {
     let rel = [
         (REL_HWHEEL, d.horizontal),
@@ -187,7 +188,7 @@ mod tests {
     use crate::outputs::pad::{CENTRE, PadPoint};
 
     #[test]
-    fn wheel_order_matches_the_python_device() {
+    fn wheel_event_order() {
         let d = WheelDelta {
             horizontal: 0,
             vertical: -1,

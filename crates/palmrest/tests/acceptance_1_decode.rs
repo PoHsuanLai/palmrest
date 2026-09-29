@@ -83,7 +83,8 @@ fn bad_lengths_are_rejected() {
     }
 }
 
-/// The Python parser's reading of the same bytes, from its goldens (`tests/parity`).
+/// The reference parser's reading of the same bytes, from the frozen goldens
+/// (`tests/fixtures/reference`).
 fn reference_touches(name: &str) -> Vec<(u8, i32, i32, u8, u8)> {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join(format!("tests/fixtures/reference/{name}.golden"));
@@ -99,7 +100,7 @@ fn reference_touches(name: &str) -> Vec<(u8, i32, i32, u8, u8)> {
 }
 
 #[test]
-fn kernel_reading_agrees_with_the_python_parser() {
+fn kernel_reading_agrees_with_the_reference_parser() {
     for name in ["decode_n1", "decode_n2", "decode_n3"] {
         let ours = one(name).unwrap().remove(0).touches;
         let theirs = reference_touches(name);
@@ -121,7 +122,7 @@ fn kernel_reading_agrees_with_the_python_parser() {
                 "{name}: y is the unsigned reading, sign-extended and negated"
             );
         }
-        // Deltas agree after the Python wrap fix (and the y negation).
+        // Deltas agree after the unsigned reading's wrap fix (and the y negation).
         for (p, q) in ours.iter().zip(ours.iter().skip(1)) {
             let (pp, qq) = (
                 theirs.iter().find(|t| t.0 == p.id.0).unwrap(),

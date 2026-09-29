@@ -1,7 +1,7 @@
 //! Finding the mouse's hidraw node, and the reconnect backoff (12.3.12).
 //!
 //! The uevent's `HID_ID` is parsed as `bus:vendor:product` and looked up field by field in
-//! `sensor::magic_mouse::KNOWN` (FINDINGS F17).
+//! `sensor::magic_mouse::KNOWN`.
 
 use crate::protocol::DeviceInfo;
 use crate::sensor::magic_mouse::{KnownDevice, known};

@@ -1,7 +1,7 @@
 //! Px-free wheel output: hi-res and detent units with carried remainders (O4).
 //!
-//! Only the wheel device quantises; the socket carries exact px. Kept byte-for-byte with the
-//! Python daemon so the switch-over does not change how far a foreign window scrolls.
+//! Only the wheel device quantises; the socket carries exact px. The reference-feel goldens pin
+//! it byte for byte.
 
 use crate::protocol::Axis;
 use serde::{Deserialize, Serialize};
@@ -83,8 +83,8 @@ impl UnitCarry {
     }
 }
 
-/// One wheel frame in the Python device's orientation: its y is the raw report's unsigned y,
-/// which is palmrest's y negated. Plasma saved `NaturalScroll=true` against that orientation.
+/// One wheel frame. Its y is the raw report's unsigned y, which is palmrest's y negated: the
+/// orientation the reference-feel goldens pin.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct WheelDelta {
     pub horizontal: i32,
@@ -94,7 +94,7 @@ pub struct WheelDelta {
 }
 
 impl WheelDelta {
-    /// The frame for quanta on `axis` (palmrest's frame in, Python's frame out).
+    /// The frame for quanta on `axis` (palmrest's frame in, the wheel's frame out).
     pub fn on(axis: Axis, q: Quanta) -> Self {
         match axis {
             Axis::X => Self {
@@ -197,7 +197,7 @@ mod tests {
     }
 
     #[test]
-    fn wheel_y_is_flipped_into_the_python_orientation() {
+    fn wheel_y_is_flipped_into_the_wheel_orientation() {
         let q = Quanta {
             hi_res: 7,
             detents: 1,

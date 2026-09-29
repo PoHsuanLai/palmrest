@@ -17,7 +17,7 @@ use crate::tracker::{Out, Tracker};
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
-/// Consecutive failed reads that mean the mouse is gone (as the Python daemon).
+/// Consecutive failed reads that mean the mouse is gone.
 pub const ERROR_THRESHOLD: u32 = 10;
 /// The longest the loop sleeps without looking at claims and configuration.
 pub const IDLE_POLL: Duration = Duration::from_millis(100);

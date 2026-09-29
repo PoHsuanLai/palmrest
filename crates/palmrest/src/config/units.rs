@@ -30,7 +30,7 @@ pub struct Fraction(pub u16);
 #[serde(transparent)]
 pub struct Count(pub u16);
 
-/// Micrometres on the touch surface: every length and position threshold (FINDINGS F25).
+/// Micrometres on the touch surface: every length and position threshold.
 /// Integers, like every other key, so a file compares exactly; the gesture core rounds them
 /// onto its grid per axis (`sensor::lattice`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]

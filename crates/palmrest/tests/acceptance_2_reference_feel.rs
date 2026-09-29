@@ -1,14 +1,15 @@
-//! Acceptance 12.8 item 2 and 11.8 item 16: Python parity of the scroll feel.
+//! Acceptance 12.8 item 2 and 11.8 item 16: the reference scroll feel.
 //!
-//! Five sessions replayed through palmrest (rejection Off, wheel output) and, once, through the
-//! Python daemon's `ScrollAxisLock` (`tests/parity/python_reference.py`, goldens committed):
-//! identical lock decisions per report, identical cumulative v120 on the wheel, and cumulative
-//! socket px equal to v120 x 0.5 within one v120 unit on every report.
+//! Five sessions replayed through palmrest (rejection Off, wheel output) against the goldens in
+//! `tests/fixtures/reference/feel_*.golden`: identical lock decisions per report, identical
+//! cumulative v120 on the wheel, and cumulative socket px equal to v120 x 0.5 within one v120
+//! unit on every report. The goldens are frozen: they were produced once by the retired Python
+//! daemon, and nothing regenerates them.
 //!
-//! The px comparison is cumulative per locked stroke (from each Began). The Python lock throws
-//! away its sub-unit remainder at every lock and unlock; the socket carries exact px and has
-//! nothing to throw away, so over a whole session the two drift apart by up to one unit per
-//! stroke even though every stroke agrees (FINDINGS).
+//! The px comparison is cumulative per locked stroke (from each Began). The reference lock
+//! throws away its sub-unit remainder at every lock and unlock; the socket carries exact px and
+//! has nothing to throw away, so over a whole session the two drift apart by up to one unit per
+//! stroke even though every stroke agrees.
 
 mod support;
 
@@ -72,7 +73,7 @@ fn reference_config() -> Config {
 }
 
 #[test]
-fn lock_decisions_and_wheel_units_match_python_per_report() {
+fn lock_decisions_and_wheel_units_match_the_reference_per_report() {
     for name in SESSIONS {
         let steps = replay(&support::load(name), reference_config(), Timing::Arrival);
         let py = golden(name);
@@ -118,7 +119,7 @@ fn lock_decisions_and_wheel_units_match_python_per_report() {
                 *acc += i64::from(v);
             }
             assert_eq!(ours, theirs, "{name}: cumulative wheel units at record {i}");
-            // Socket px are finger direction in the kernel frame; the wheel's y is the Python
+            // Socket px are finger direction in the kernel frame; the wheel's y is the unsigned
             // reading, the other way up.
             let stroke = |k: usize| (theirs[k] - stroke_start[k]) as f64 * 0.5;
             let (want_x, want_y) = (stroke(2), -stroke(3));

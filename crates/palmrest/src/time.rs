@@ -41,9 +41,9 @@ impl Mono {
         self.0 as f64 / 1e9
     }
 
-    /// `self - earlier` computed the way the Python daemon computed it: as a difference of
-    /// float seconds. The scroll feel uses this wherever a result is truncated, because the
-    /// parity fixtures showed a float-rounded `dt` moving a truncation by one unit.
+    /// `self - earlier` as a difference of float seconds. The scroll feel uses this wherever a
+    /// result is truncated, because the reference-feel goldens were computed this way and a
+    /// differently rounded `dt` moves a truncation by one unit.
     pub fn float_since(self, earlier: Mono) -> f64 {
         self.secs() - earlier.secs()
     }

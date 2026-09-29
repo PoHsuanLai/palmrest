@@ -1,7 +1,7 @@
 //! The mice palmrest knows by id, and how far each is verified.
 //!
 //! `HID_ID` is parsed as `bus:vendor:product` and compared field by field; a substring search
-//! for "004c" and "0269" (what the Python daemon did) would also match a device whose name or
+//! for "004c" and "0269" would also match a device whose name or
 //! another id merely contains those digits.
 
 /// The HID bus a device is on.

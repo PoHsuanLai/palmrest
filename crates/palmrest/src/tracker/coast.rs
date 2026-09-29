@@ -1,4 +1,4 @@
-//! Synthesized momentum for foreign clients (`foreign_momentum = "ours"`, FINDINGS F23).
+//! Synthesized momentum for foreign clients (`foreign_momentum = "ours"`).
 //!
 //! After a flick the virtual touchpad's contacts stay down and keep moving along the design/11
 //! §11.5.1 drag curve, one frame every `momentum.frame_ms`, then lift once the glide has fallen
@@ -133,7 +133,7 @@ impl Coast {
 /// Moves the pair by `px` on `axis`, re-landing at the centre near an edge (F8) and leaving
 /// out a move that does not change the contacts' position. A re-land is followed at once by
 /// this frame's move from the centre, so the glide loses no distance to it (the stroke's own
-/// re-land drops that frame's delta; FINDINGS F24).
+/// re-land drops that frame's delta).
 fn move_pad(pad: Pad, axis: Axis, px: f64, now: Mono, tp: &TouchpadSettings) -> (Pad, Vec<Out>) {
     let before = pad.at();
     let (dx, dy) = match axis {

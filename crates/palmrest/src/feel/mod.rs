@@ -41,7 +41,7 @@ impl LockParams {
     }
 }
 
-/// A threshold on the grid times the P5 multiplier, rounded as the Python daemon rounded it.
+/// A threshold on the grid times the P5 multiplier, rounded as the reference feel rounds it.
 fn scaled(um: Um, axis: Along, multiplier: f64) -> i32 {
     (f64::from(units(um, axis)) * multiplier).round() as i32
 }

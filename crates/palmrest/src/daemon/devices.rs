@@ -1,7 +1,7 @@
 //! The virtual devices of a daemon run, created lazily and retried while uinput is not ready.
 //!
-//! At boot the uinput ACL can arrive after the user session starts; the Python daemon waited
-//! for it (1 s doubling to 5 s). Here the reader keeps running meanwhile, so the socket
+//! At boot the uinput ACL can arrive after the user session starts. The reader keeps running
+//! meanwhile, so the socket
 //! stream to our own surfaces never waits on the virtual devices.
 
 use super::discover::Backoff;

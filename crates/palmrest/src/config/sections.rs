@@ -98,7 +98,7 @@ settings_struct! {
 }
 
 settings_struct! {
-    /// `[device]`: which sensor the daemon reads (FINDINGS F25). Chosen when the daemon looks
+    /// `[device]`: which sensor the daemon reads. Chosen when the daemon looks
     /// for a device, so a change applies at the next reconnect.
     pub struct DeviceSettings {
         source: DeviceSource = DeviceSource::Hidraw;
@@ -116,11 +116,11 @@ settings_struct! {
 }
 
 settings_struct! {
-    /// `[feel]`: the acceleration curve and the `MacLike` shape's constants (FINDINGS F22).
+    /// `[feel]`: the acceleration curve and the `MacLike` shape's constants.
     /// Speeds are grid units per second of one sample (26/mm across, 70/mm along: the Magic
     /// Mouse 2's raw units), as the velocity gain measures them. They shape the transfer
     /// function rather than recognise a gesture, and are applied to whichever axis locked, so
-    /// they stay in grid units rather than becoming x/y millimetre pairs (FINDINGS F25).
+    /// they stay in grid units rather than becoming x/y millimetre pairs.
     pub struct FeelSettings {
         curve: Curve = Curve::Classic;
         mac_like_threshold_units_s: Count = Count(1500), in Count(0) => Count(20000);
@@ -133,7 +133,7 @@ settings_struct! {
 settings_struct! {
     /// `[momentum]`: the glide palmrest synthesizes with `foreign_momentum = "ours"`: the
     /// design/11 §11.3.6 values (drag `v' = -a v^b`, release window, thresholds) and the
-    /// frame interval of the synthesized contacts (FINDINGS F23).
+    /// frame interval of the synthesized contacts.
     pub struct MomentumSettings {
         a: Fraction = Fraction(30000), in Fraction(1000) => Fraction(65000);
         b: Fraction = Fraction(700), in Fraction(100) => Fraction(950);
