@@ -19,14 +19,14 @@ use palmrest::protocol::{Phase, ToHost};
 use palmrest::replay::{Timing, replay};
 
 const SESSIONS: [&str; 5] = [
-    "parity_slow",
-    "parity_fast",
-    "parity_flicks",
-    "parity_diagonal",
-    "parity_fingers",
+    "feel_slow",
+    "feel_fast",
+    "feel_flicks",
+    "feel_diagonal",
+    "feel_fingers",
 ];
 
-struct PyLine {
+struct GoldenLine {
     axis: String,
     h: i32,
     v: i32,
@@ -34,16 +34,16 @@ struct PyLine {
     vh: i32,
 }
 
-fn python(name: &str) -> Vec<PyLine> {
+fn golden(name: &str) -> Vec<GoldenLine> {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(format!("tests/fixtures/parity/{name}.python"));
+        .join(format!("tests/fixtures/reference/{name}.golden"));
     std::fs::read_to_string(path)
         .unwrap()
         .lines()
         .map(|l| {
             let f: Vec<&str> = l.split(' ').collect();
             let n = |i: usize| f[i].parse::<i32>().unwrap();
-            PyLine {
+            GoldenLine {
                 axis: f[0].to_owned(),
                 h: n(1),
                 v: n(2),
@@ -63,7 +63,7 @@ fn axis_name(l: Lock) -> &'static str {
     }
 }
 
-fn parity_config() -> Config {
+fn reference_config() -> Config {
     Config {
         rejection: Rejection::Off,
         foreign_output: ForeignOutput::Wheel,
@@ -74,8 +74,8 @@ fn parity_config() -> Config {
 #[test]
 fn lock_decisions_and_wheel_units_match_python_per_report() {
     for name in SESSIONS {
-        let steps = replay(&support::load(name), parity_config(), Timing::Arrival);
-        let py = python(name);
+        let steps = replay(&support::load(name), reference_config(), Timing::Arrival);
+        let py = golden(name);
         assert_eq!(steps.len(), py.len(), "{name}: record count");
         let (mut ours, mut theirs) = ([0i64; 4], [0i64; 4]);
         let (mut px_x, mut px_y) = (0.0f64, 0.0f64);
@@ -148,7 +148,7 @@ fn lock_decisions_and_wheel_units_match_python_per_report() {
 fn sessions_cover_every_lock_decision() {
     let seen: std::collections::BTreeSet<String> = SESSIONS
         .iter()
-        .flat_map(|n| python(n))
+        .flat_map(|n| golden(n))
         .map(|l| l.axis)
         .collect();
     assert_eq!(

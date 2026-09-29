@@ -2,7 +2,7 @@
 //! reading outputs back.
 #![allow(dead_code)]
 
-mod python_points;
+mod case_points;
 pub mod scenarios;
 mod sessions;
 mod strokes;
@@ -28,7 +28,7 @@ pub fn finger(id: u8, x: i32, y: i32) -> RawTouch {
 }
 
 /// A contact given in the Python daemon's unsigned reading, converted to the kernel frame.
-pub fn python_finger(id: u8, x: i32, y: i32) -> RawTouch {
+pub fn unsigned_finger(id: u8, x: i32, y: i32) -> RawTouch {
     let k = |v: i32| {
         if (v & 0xfff) >= 0x800 {
             (v & 0xfff) - 4096

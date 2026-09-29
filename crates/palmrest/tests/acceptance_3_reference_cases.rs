@@ -23,7 +23,7 @@ use std::time::Duration;
 
 /// `touch(x, y, id)` in the Python reading, as a lock sample in the kernel frame.
 fn touch(x: i32, y: i32, id: u8) -> Sample {
-    let t = support::python_finger(id, x, y);
+    let t = support::unsigned_finger(id, x, y);
     Sample { id: t.id, at: t.at }
 }
 
@@ -76,7 +76,7 @@ fn points(n: i32, f: impl Fn(i32) -> Vec<Sample>) -> Vec<Vec<Sample>> {
 }
 
 /// The config the Python tests construct, for the end-to-end runs.
-fn python_config() -> Config {
+fn reference_config() -> Config {
     let mut c = Config {
         rejection: Rejection::Off,
         foreign_output: ForeignOutput::Wheel,
@@ -91,7 +91,7 @@ fn python_config() -> Config {
 fn run(name: &str) -> ((i32, i32), Vec<Action>) {
     let all = outs(&replay(
         &support::load(name),
-        python_config(),
+        reference_config(),
         Timing::Arrival,
     ));
     let wheel = all.iter().fold((0, 0), |(h, v), o| match o {
@@ -122,7 +122,7 @@ fn one_finger_vertical_scrolls_only_vertically() {
         8,
     );
     assert!(v != 0 && h == 0);
-    let ((h, v), _) = run("python_one_vertical");
+    let ((h, v), _) = run("case_one_vertical");
     assert!(v != 0 && h == 0);
 }
 
@@ -135,7 +135,7 @@ fn one_finger_horizontal_scrolls_only_horizontally() {
         8,
     );
     assert!(h != 0 && v == 0);
-    let ((h, v), _) = run("python_one_horizontal");
+    let ((h, v), _) = run("case_one_horizontal");
     assert!(h != 0 && v == 0);
 }
 
@@ -145,7 +145,7 @@ fn two_fingers_never_scroll_horizontally() {
         vec![touch(900 + i * 6, 1000, 1), touch(1300 + i * 6, 1000, 2)]
     });
     assert_eq!(drag(AxisLock::default(), &pts, 10_000, 8).1, (0, 0));
-    assert_eq!(run("python_two_never_horizontal").0, (0, 0));
+    assert_eq!(run("case_two_never_horizontal").0, (0, 0));
 }
 
 #[test]
@@ -155,7 +155,7 @@ fn two_fingers_scroll_vertically() {
     });
     let (_, (h, v)) = drag(AxisLock::default(), &pts, 10_000, 8);
     assert!(v != 0 && h == 0);
-    let ((h, v), _) = run("python_two_vertical");
+    let ((h, v), _) = run("case_two_vertical");
     assert!(v != 0 && h == 0);
 }
 
@@ -168,8 +168,8 @@ fn three_fingers_do_nothing() {
     });
     assert_eq!(drag(AxisLock::default(), &pts, 10_000, 8).1, (0, 0));
     let all = outs(&replay(
-        &support::load("python_three_nothing"),
-        python_config(),
+        &support::load("case_three_nothing"),
+        reference_config(),
         Timing::Arrival,
     ));
     assert!(
@@ -196,8 +196,8 @@ fn finger_count_change_does_not_jump() {
     assert_eq!(hi_res(&ev), (0, 0));
     // End to end: nothing is emitted at the report where the second finger lands.
     let steps = replay(
-        &support::load("python_count_change"),
-        python_config(),
+        &support::load("case_count_change"),
+        reference_config(),
         Timing::Arrival,
     );
     let last = steps.last().unwrap();
@@ -237,8 +237,8 @@ fn scroll_steps_are_finer_than_a_detent_tenth() {
     assert!(emitted.iter().any(|v| v.abs() % 12 != 0));
     // End to end, the wheel and the socket both step finer than a tenth of a detent.
     let all = outs(&replay(
-        &support::load("python_fine_steps"),
-        python_config(),
+        &support::load("case_fine_steps"),
+        reference_config(),
         Timing::Arrival,
     ));
     let wheel: Vec<i32> = all
@@ -310,7 +310,7 @@ fn two_finger_swipe_right_switches_desktop_left() {
         kwin(&map.two_finger_swipe_left),
         "Switch One Desktop to the Right"
     );
-    assert_eq!(run("python_swipe_right").1, [Action::WorkspacePrev]);
+    assert_eq!(run("case_swipe_right").1, [Action::WorkspacePrev]);
 }
 
 #[test]
@@ -328,7 +328,7 @@ fn long_two_finger_drag_switches_again_after_cooldown() {
         [FingerDirection::Right, FingerDirection::Right]
     );
     assert_eq!(
-        run("python_long_drag").1,
+        run("case_long_drag").1,
         [Action::WorkspacePrev, Action::WorkspacePrev]
     );
 }
@@ -347,7 +347,7 @@ fn two_finger_vertical_drag_does_not_switch_desktop() {
         })
         .collect();
     assert!(swipe_run(&frames).is_empty());
-    assert!(run("python_vertical_no_switch").1.is_empty());
+    assert!(run("case_vertical_no_switch").1.is_empty());
 }
 
 #[test]
@@ -356,7 +356,7 @@ fn one_finger_never_switches_desktop() {
         .map(|i| (10_000 + 8 * i as u64, vec![touch(500 + i * 20, 1000, 1)]))
         .collect();
     assert!(swipe_run(&frames).is_empty());
-    assert!(run("python_one_never_switches").1.is_empty());
+    assert!(run("case_one_never_switches").1.is_empty());
 }
 
 #[test]

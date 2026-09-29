@@ -307,7 +307,7 @@ fn touches_down_and_up_alternate() {
 #[test]
 fn a_claimed_pointer_silences_every_foreign_output() {
     use palmrest::config::ForeignOutput;
-    for name in ["g4_fast", "parity_fast", "click_during_scroll"] {
+    for name in ["g4_fast", "feel_fast", "click_during_scroll"] {
         let free = run(name);
         assert!(
             free.iter().any(|o| matches!(o, Out::Pad(_))),
@@ -333,7 +333,7 @@ fn a_claimed_pointer_silences_every_foreign_output() {
     };
     let (mut t, _) = Tracker::new(wheel.clone()).claim(Over::Ours);
     let mut all = Vec::new();
-    for r in &support::load("parity_fast") {
+    for r in &support::load("feel_fast") {
         let (nt, _, step) = feed(t, StampClock::new(), r, Timing::Arrival);
         t = nt;
         all.extend(step.outs);
@@ -341,7 +341,7 @@ fn a_claimed_pointer_silences_every_foreign_output() {
     assert!(!all.iter().any(|o| matches!(o, Out::Wheel(_))));
     assert!(
         outs(&replay(
-            &support::load("parity_fast"),
+            &support::load("feel_fast"),
             wheel,
             Timing::Arrival
         ))

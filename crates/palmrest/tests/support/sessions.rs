@@ -49,7 +49,7 @@ fn stroke(
     (s.lift(t), t)
 }
 
-pub fn parity_slow() -> Script {
+pub fn feel_slow() -> Script {
     let mut rng = Lcg(1);
     let (s, t) = stroke(
         Script::default(),
@@ -68,7 +68,7 @@ pub fn parity_slow() -> Script {
     s
 }
 
-pub fn parity_fast() -> Script {
+pub fn feel_fast() -> Script {
     let mut rng = Lcg(2);
     (0..4).fold(Script::default(), |s, k| {
         let (s, _) = stroke(
@@ -83,7 +83,7 @@ pub fn parity_fast() -> Script {
     })
 }
 
-pub fn parity_flicks() -> Script {
+pub fn feel_flicks() -> Script {
     let mut rng = Lcg(3);
     let mut t = 1000.0;
     let mut s = Script::default();
@@ -102,7 +102,7 @@ pub fn parity_flicks() -> Script {
     s
 }
 
-pub fn parity_diagonal() -> Script {
+pub fn feel_diagonal() -> Script {
     let mut rng = Lcg(4);
     let (s, t) = stroke(
         Script::default(),
@@ -118,7 +118,7 @@ pub fn parity_diagonal() -> Script {
     s
 }
 
-pub fn parity_fingers() -> Script {
+pub fn feel_fingers() -> Script {
     let mut rng = Lcg(5);
     let mut s = Script::default();
     let mut t = 1000.0;

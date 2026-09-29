@@ -4,13 +4,13 @@
 //! Coordinates are the kernel frame (+x right, +y toward the user) unless a scenario ports a
 //! Python test, which states its points in the Python daemon's unsigned reading.
 
-use super::python_points::{python, python_count_change, python_long_drag};
-use super::sessions::{parity_diagonal, parity_fast, parity_fingers, parity_flicks, parity_slow};
+use super::case_points::{drag, case_count_change, case_long_drag};
+use super::sessions::{feel_diagonal, feel_fast, feel_fingers, feel_flicks, feel_slow};
 use super::strokes::{
     click_during_scroll, mouse_moving, one_finger_swipe, pair_stroke, palm_during_scroll,
     rest_side_band, swipe_199, swipe_vertical_then_horizontal, taps,
 };
-use super::{Script, finger, python_finger};
+use super::{Script, finger, unsigned_finger};
 use palmrest::recording::Record;
 use palmrest::sensor::magic_mouse::encode::encode_double;
 use palmrest::sensor::magic_mouse::report::Buttons;
@@ -40,55 +40,55 @@ fn flick() -> Script {
 /// Every fixture, by file name.
 pub fn all() -> Vec<(&'static str, Vec<Record>)> {
     let s = Script::default;
-    let one_vertical = python(|i| vec![python_finger(1, 1000, 1000 + i * 6)], 40);
-    let one_horizontal = python(|i| vec![python_finger(1, 1000 + i * 6, 1000)], 40);
-    let two_horizontal = python(
+    let one_vertical = drag(|i| vec![unsigned_finger(1, 1000, 1000 + i * 6)], 40);
+    let one_horizontal = drag(|i| vec![unsigned_finger(1, 1000 + i * 6, 1000)], 40);
+    let two_horizontal = drag(
         |i| {
             vec![
-                python_finger(1, 900 + i * 6, 1000),
-                python_finger(2, 1300 + i * 6, 1000),
+                unsigned_finger(1, 900 + i * 6, 1000),
+                unsigned_finger(2, 1300 + i * 6, 1000),
             ]
         },
         40,
     );
-    let swipe_right = python(
+    let swipe_right = drag(
         |i| {
             vec![
-                python_finger(1, 900 + i * 10, 1000),
-                python_finger(2, 1300 + i * 10, 1000),
+                unsigned_finger(1, 900 + i * 10, 1000),
+                unsigned_finger(2, 1300 + i * 10, 1000),
             ]
         },
         40,
     )
     .lift(11_000.0);
-    let vertical_drag = python(
+    let vertical_drag = drag(
         |i| {
             vec![
-                python_finger(1, 900 + i * 3, 1000 + i * 10),
-                python_finger(2, 1300 + i * 3, 1000 + i * 10),
+                unsigned_finger(1, 900 + i * 3, 1000 + i * 10),
+                unsigned_finger(2, 1300 + i * 3, 1000 + i * 10),
             ]
         },
         60,
     );
-    let one_never = python(|i| vec![python_finger(1, 500 + i * 20, 1000)], 60);
-    let two_vertical = python(
+    let one_never = drag(|i| vec![unsigned_finger(1, 500 + i * 20, 1000)], 60);
+    let two_vertical = drag(
         |i| {
             vec![
-                python_finger(1, 900, 1000 + i * 6),
-                python_finger(2, 1300, 1000 + i * 6),
+                unsigned_finger(1, 900, 1000 + i * 6),
+                unsigned_finger(2, 1300, 1000 + i * 6),
             ]
         },
         40,
     );
-    let three = python(
+    let three = drag(
         |i| {
             (1..=3)
-                .map(|k| python_finger(k, 500 + 400 * i32::from(k), 1000 + i * 6))
+                .map(|k| unsigned_finger(k, 500 + 400 * i32::from(k), 1000 + i * 6))
                 .collect()
         },
         40,
     );
-    let fine = python(|i| vec![python_finger(1, 1000, 1000 + i * 6)], 40);
+    let fine = drag(|i| vec![unsigned_finger(1, 1000, 1000 + i * 6)], 40);
     let double = encode_double(&golden(&[GOLDEN_A]), &golden(&[GOLDEN_A, GOLDEN_B]));
     let fixtures: Vec<(&'static str, Script)> = vec![
         ("decode_n0", s().raw(0.0, golden(&[]))),
@@ -112,22 +112,22 @@ pub fn all() -> Vec<(&'static str, Vec<Record>)> {
             "decode_len29",
             s().raw(0.0, golden(&[GOLDEN_A, GOLDEN_B])[..29].to_vec()),
         ),
-        ("parity_slow", parity_slow()),
-        ("parity_fast", parity_fast()),
-        ("parity_flicks", parity_flicks()),
-        ("parity_diagonal", parity_diagonal()),
-        ("parity_fingers", parity_fingers()),
-        ("python_one_vertical", one_vertical),
-        ("python_one_horizontal", one_horizontal),
-        ("python_two_never_horizontal", two_horizontal),
-        ("python_swipe_right", swipe_right),
-        ("python_long_drag", python_long_drag()),
-        ("python_vertical_no_switch", vertical_drag),
-        ("python_one_never_switches", one_never),
-        ("python_two_vertical", two_vertical),
-        ("python_three_nothing", three),
-        ("python_count_change", python_count_change()),
-        ("python_fine_steps", fine),
+        ("feel_slow", feel_slow()),
+        ("feel_fast", feel_fast()),
+        ("feel_flicks", feel_flicks()),
+        ("feel_diagonal", feel_diagonal()),
+        ("feel_fingers", feel_fingers()),
+        ("case_one_vertical", one_vertical),
+        ("case_one_horizontal", one_horizontal),
+        ("case_two_never_horizontal", two_horizontal),
+        ("case_swipe_right", swipe_right),
+        ("case_long_drag", case_long_drag()),
+        ("case_vertical_no_switch", vertical_drag),
+        ("case_one_never_switches", one_never),
+        ("case_two_vertical", two_vertical),
+        ("case_three_nothing", three),
+        ("case_count_change", case_count_change()),
+        ("case_fine_steps", fine),
         (
             "swipe_200_right",
             pair_stroke(s(), 0.0, 25, (8, 0), (-100, 0)).lift(312.0),

@@ -84,9 +84,9 @@ fn bad_lengths_are_rejected() {
 }
 
 /// The Python parser's reading of the same bytes, from its goldens (`tests/parity`).
-fn python_touches(name: &str) -> Vec<(u8, i32, i32, u8, u8)> {
+fn reference_touches(name: &str) -> Vec<(u8, i32, i32, u8, u8)> {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join(format!("tests/fixtures/parity/{name}.python"));
+        .join(format!("tests/fixtures/reference/{name}.golden"));
     let text = std::fs::read_to_string(path).unwrap();
     let line = text.lines().next().unwrap_or("");
     line.split(';')
@@ -102,7 +102,7 @@ fn python_touches(name: &str) -> Vec<(u8, i32, i32, u8, u8)> {
 fn kernel_reading_agrees_with_the_python_parser() {
     for name in ["decode_n1", "decode_n2", "decode_n3"] {
         let ours = one(name).unwrap().remove(0).touches;
-        let theirs = python_touches(name);
+        let theirs = reference_touches(name);
         assert_eq!(ours.len(), theirs.len(), "{name}");
         for (o, &(id, x, y, state, size)) in ours.iter().zip(&theirs) {
             assert_eq!(

@@ -278,7 +278,7 @@ fn on_the_wheel_the_glide_is_a_decaying_run_of_hi_res_frames() {
 #[test]
 fn mac_like_is_precise_slow_and_faster_on_a_flick() {
     let cfg = Config::default();
-    let slow = compare_curves(&support::load("parity_slow"), &cfg, Timing::Arrival);
+    let slow = compare_curves(&support::load("feel_slow"), &cfg, Timing::Arrival);
     assert_eq!(slow.mac_like.peak_gain, 1.0, "slow motion is 1:1");
     assert!(slow.classic.peak_gain > 1.0);
     assert!(slow.mac_like.cumulative_px < slow.classic.cumulative_px);
@@ -305,7 +305,7 @@ fn the_default_curve_is_the_python_feel() {
     let mut explicit = Config::default();
     explicit.feel.curve = Curve::Classic;
     explicit.foreign_momentum = ForeignMomentum::Toolkit;
-    for name in ["parity_fast", "parity_flicks", "flick_two_vertical"] {
+    for name in ["feel_fast", "feel_flicks", "flick_two_vertical"] {
         let records = support::load(name);
         assert_eq!(
             replay(&records, Config::default(), Timing::Arrival),
