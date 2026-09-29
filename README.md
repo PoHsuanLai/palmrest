@@ -45,7 +45,7 @@ sensor's millimetres feel the same per millimetre.
 | `gestures` | contacts and palm/rest rejection P1-P5, scroll phases, G4 one-finger swipe, G5 workspace swipe, G6/G7 double-taps |
 | `tracker` | `Tracker::step(self, &Report, now) -> (Self, Vec<Out>)`: all of the above composed (12.4) |
 | `action`, `keys` | the gesture -> action table and what an action means on KDE / COSMIC |
-| `protocol` | the socket messages (12.3.10) |
+| `palmrest-protocol` (crate) | the socket messages and their codec (12.3.10) |
 | `config` | `gestures.toml`, lenient per key, the watch |
 | `outputs` | the `Emitter` seam, `RecordingEmitter`, the virtual touchpad model, evdev event encoding, the uinput emitter |
 | `sys` | the ioctls: the only module allowed `unsafe` |
