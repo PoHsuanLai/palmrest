@@ -248,14 +248,14 @@ The FINDINGS entry "Not built: live workspace mode" stays as the open item.
 
 Each step keeps master green (the gate above).
 
-1. `palmrest-protocol` crate: create it, move `protocol.rs` into it (split as in section 1), add
+1. (done) `palmrest-protocol` crate: create it, move `protocol.rs` into it (split as in section 1), add
    it to the workspace, switch `palmrest` to import it, delete the re-export in `lib.rs`. The
    shell-host session then deletes its copy.
-2. Delete `gestures/live.rs`, the seven `live_workspace_*` keys, their `README` and default
+2. (done) Delete `gestures/live.rs`, the seven `live_workspace_*` keys, their `README` and default
    config text.
-3. Move `sys.rs` and `outputs/uinput.rs` into `daemon/`; make `daemon` and its `sys` `pub(crate)`.
-4. Move `tests/socket.rs` and `tests/latency.rs` in-crate; add `command/`, reduce `main.rs`;
+3. (done) Move `sys.rs` and `outputs/uinput.rs` into `daemon/`; make `daemon` and its `sys` `pub(crate)`.
+4. (done) Move `tests/socket.rs` and `tests/latency.rs` in-crate; add `command/`, reduce `main.rs`;
    `daemon::Env` replaces the `std::env` reads in `main.rs` and `daemon/mod.rs`.
-5. `compare.rs` under `replay/`; rename the acceptance test files.
-6. Split `feel/lock.rs` and `gestures/contacts.rs` by concept.
-7. Trim `lib.rs` to declarations and the root list in section 2.
+5. (done) `compare.rs` under `replay/`; rename the acceptance test files.
+6. (done) Split `feel/lock.rs` and `gestures/contacts.rs` by concept.
+7. (done) Trim `lib.rs` to declarations and the root list in section 2.
