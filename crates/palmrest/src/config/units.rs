@@ -54,11 +54,6 @@ impl Fraction {
     pub fn ratio(self) -> f64 {
         f64::from(self.0) / 1000.0
     }
-
-    /// The nearest per-mille value to a float ratio (for the Python environment variables).
-    pub fn from_ratio(r: f64) -> Self {
-        Self((r * 1000.0).round().clamp(0.0, f64::from(u16::MAX)) as u16)
-    }
 }
 
 impl Percent {

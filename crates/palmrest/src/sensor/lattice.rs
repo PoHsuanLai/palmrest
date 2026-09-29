@@ -1,8 +1,8 @@
 //! The reference lattice: the integer grid the gesture core computes on.
 //!
-//! The scroll feel is the Python daemon's, operation for operation (FINDINGS F4, F5): it
-//! truncates centroids and carries integer remainders in the Magic Mouse 2's own units, so
-//! computing it on floats in millimetres would move truncations and break parity. The core
+//! The scroll feel truncates centroids and carries integer remainders in the Magic Mouse 2's
+//! own units, so computing it on floats in millimetres would move truncations and break the
+//! reference-feel goldens. The core
 //! therefore keeps its integer arithmetic, on a grid fixed in millimetres: the Magic Mouse 2's,
 //! 26 units/mm across and 70 units/mm along (the resolution its kernel driver advertises). Every
 //! sensor's millimetres are projected onto it, so a finger that moves 10 mm scrolls the same on
@@ -48,13 +48,6 @@ pub fn point(at: MmPoint) -> Point {
 /// A configured length on the grid along `axis`, rounded to the nearest unit.
 pub fn units(um: Um, axis: Along) -> i32 {
     axis.per_mm().units(Mm(f64::from(um.0) / 1000.0))
-}
-
-/// A length given in grid units (a pre-millimetre settings key, a Python environment
-/// variable) as micrometres, rounded; `units(micrometres(u, a), a) == u` for every `u` the
-/// settings accept.
-pub fn micrometres(grid_units: i32, axis: Along) -> Um {
-    Um((axis.per_mm().mm(grid_units).0 * 1000.0).round() as i32)
 }
 
 /// The surface's edges on the grid.
@@ -125,7 +118,8 @@ mod tests {
     fn micrometres_round_trip_on_both_axes() {
         for axis in [Along::X, Along::Y] {
             for u in -5000..=5000 {
-                assert_eq!(units(micrometres(u, axis), axis), u, "{u} {axis:?}");
+                let um = Um((axis.per_mm().mm(u).0 * 1000.0).round() as i32);
+                assert_eq!(units(um, axis), u, "{u} {axis:?}");
             }
         }
     }
