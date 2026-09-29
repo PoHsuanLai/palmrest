@@ -53,7 +53,7 @@ settings_struct! {
 }
 
 settings_struct! {
-    /// `[gestures]`: the one-finger swipe, the live model, the action table.
+    /// `[gestures]`: the one-finger swipe, the host swipe stream, the action table.
     pub struct GestureSettings {
         g4_foreign_mode: G4Mode = G4Mode::InjectAndScroll;
         g4_travel_um: Um = Um(11538);
@@ -61,13 +61,6 @@ settings_struct! {
         g4_axis_ratio: Fraction = Fraction(2000);
         g4_settle_ms: Ms = Ms(50);
         host_swipe_d_um as "host_swipe_D_um": Um = Um(38462);
-        live_workspace_d_um as "live_workspace_D_um": Um = Um(38462);
-        live_workspace_overshoot_scale: Fraction = Fraction(250);
-        live_workspace_overshoot_cap: Fraction = Fraction(125);
-        live_workspace_velocity_window_ms: Ms = Ms(80);
-        live_workspace_commit_velocity: Fraction = Fraction(1500);
-        live_workspace_finish_min_ms: Ms = Ms(100);
-        live_workspace_finish_max_ms: Ms = Ms(400);
         contact_nibble_policy: ContactNibblePolicy = ContactNibblePolicy::OneToFour;
         gesture_action_map: ActionMap = ActionMap::default();
     }

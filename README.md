@@ -42,7 +42,7 @@ sensor's millimetres feel the same per millimetre.
 | `touch` | the Magic Mouse's touch block, and the grid `Point` the core works in |
 | `stamp` | the 18-bit device timestamp fitted onto `CLOCK_MONOTONIC` (12.3.1, acceptance 12); evdev's kernel stamps |
 | `feel` | axis lock, gains, px, wheel quantisation, natural direction (12.3.8) |
-| `gestures` | contacts and palm/rest rejection P1-P5, scroll phases, G4 one-finger swipe, G5 workspace swipe, G6/G7 double-taps, the live model formulas |
+| `gestures` | contacts and palm/rest rejection P1-P5, scroll phases, G4 one-finger swipe, G5 workspace swipe, G6/G7 double-taps |
 | `tracker` | `Tracker::step(self, &Report, now) -> (Self, Vec<Out>)`: all of the above composed (12.4) |
 | `action`, `keys` | the gesture -> action table and what an action means on KDE / COSMIC |
 | `protocol` | the socket messages (12.3.10) |

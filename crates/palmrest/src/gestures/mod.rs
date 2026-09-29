@@ -3,7 +3,6 @@
 pub mod bands;
 pub mod click;
 pub mod contacts;
-pub mod live;
 pub mod motion;
 pub mod one_swipe;
 pub mod scroll;

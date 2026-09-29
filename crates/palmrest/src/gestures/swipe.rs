@@ -4,7 +4,7 @@
 //! dominates past `vertical_max_um` re-anchors (the pair is scrolling; "dominates" compares grid
 //! units, as it always did); `threshold_um` of horizontal travel fires once
 //! in the direction the fingers moved and re-anchors, so a long drag keeps going after the
-//! cooldown. The same pair also feeds the host a raw `Swipe` stream for the live model.
+//! cooldown. The same pair also feeds the host a raw `Swipe` stream.
 
 use crate::config::{Config, SwipeRepeat};
 use crate::feel::{Hold, Sample};
