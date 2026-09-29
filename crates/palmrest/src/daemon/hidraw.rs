@@ -59,11 +59,6 @@ pub enum Read {
     Failed(String),
 }
 
-/// Waits up to `timeout` for one hidraw read.
-pub fn read(fd: &OwnedFd, timeout: Duration) -> Read {
-    read_up_to(fd, timeout, READ_LEN)
-}
-
 /// Waits up to `timeout` for one read of at most `len` bytes.
 pub fn read_up_to(fd: &OwnedFd, timeout: Duration, len: usize) -> Read {
     let ts = Timespec {

@@ -4,6 +4,7 @@
 pub mod devices;
 pub mod discover;
 pub mod dispatch;
+mod env;
 pub mod evdev;
 pub mod hidraw;
 pub mod latency;
@@ -14,19 +15,17 @@ pub mod source;
 pub(crate) mod sys;
 pub mod uinput;
 
-use crate::action::Desktop;
 use crate::config::{self, Loaded};
 use crate::outputs::Emitter;
 use crate::tracker::Tracker;
 use devices::{Devices, Factory};
-use std::path::PathBuf;
+pub use env::Env;
 use std::sync::mpsc;
 use uinput::UinputEmitter;
 
 /// Runs the daemon: never returns unless setup fails.
-pub fn run() -> Result<(), String> {
-    let env = |k: &str| std::env::var(k).ok();
-    let dir = config::config_dir(env);
+pub fn run(env: &Env) -> Result<(), String> {
+    let dir = env.config_dir.clone();
     let loaded: Loaded = config::load(dir.as_deref());
     loaded
         .warnings
@@ -42,10 +41,11 @@ pub fn run() -> Result<(), String> {
         }
         None => None,
     };
-    let runtime = env("XDG_RUNTIME_DIR")
-        .filter(|s| !s.is_empty())
+    let runtime = env
+        .runtime_dir
+        .as_deref()
         .ok_or("XDG_RUNTIME_DIR is not set")?;
-    let path = socket::default_path(&PathBuf::from(runtime));
+    let path = socket::default_path(runtime);
     let listener = socket::bind(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let (claims_tx, claims_rx) = mpsc::channel();
     let socket = socket::spawn(listener, claims_tx).map_err(|e| format!("socket thread: {e}"))?;
@@ -59,7 +59,7 @@ pub fn run() -> Result<(), String> {
         claims: claims_rx,
         configs: config_rx,
         devices: Devices::new(factory, &loaded.config, now),
-        desktop: Desktop::from_env_value(&env("XDG_CURRENT_DESKTOP").unwrap_or_default()),
+        desktop: env.desktop,
         tracker: Tracker::new(loaded.config),
     };
     reader.run();

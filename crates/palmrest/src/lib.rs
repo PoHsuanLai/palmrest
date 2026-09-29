@@ -6,9 +6,10 @@
 //! codec (`decode`, `encode`, `report`) lives in `sensor::magic_mouse`.
 
 pub mod action;
+pub mod command;
 pub mod compare;
 pub mod config;
-pub mod daemon;
+pub(crate) mod daemon;
 pub mod feel;
 pub mod gestures;
 pub mod keys;

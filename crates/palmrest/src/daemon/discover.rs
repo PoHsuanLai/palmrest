@@ -44,11 +44,6 @@ pub fn known_device(id: &HidId) -> Option<&'static KnownDevice> {
     known(id.bus, id.vendor, id.product)
 }
 
-/// Whether this is a Magic Mouse palmrest knows (verified or not).
-pub fn is_magic_mouse(id: &HidId) -> bool {
-    known_device(id).is_some()
-}
-
 /// A hidraw node of a known mouse.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Found {
@@ -129,7 +124,7 @@ mod tests {
         let id = parse_uevent(mm).unwrap();
         assert_eq!((id.bus, id.vendor, id.product), (5, 0x4c, 0x269));
         assert_eq!(id.name, "Someone's Magic Mouse");
-        assert!(is_magic_mouse(&id));
+        assert!(known_device(&id).is_some());
         const OTHERS: &[&str] = &[
             "HID_ID=0003:00000DB0:00000076\nHID_NAME=Lights 004c 0269",
             "HID_ID=0003:0000004C:00000265",
@@ -139,7 +134,7 @@ mod tests {
         ];
         for text in OTHERS {
             assert!(
-                !parse_uevent(text).is_some_and(|i| is_magic_mouse(&i)),
+                !parse_uevent(text).is_some_and(|i| known_device(&i).is_some()),
                 "{text:?}"
             );
         }
