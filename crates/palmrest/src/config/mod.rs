@@ -1,9 +1,7 @@
 //! `palmrest/gestures.toml`: every tunable value, its default, and live reload.
 
 pub mod enums;
-pub mod env;
 pub mod file;
-pub mod legacy;
 pub mod lenient;
 pub mod load;
 pub mod sections;
@@ -14,8 +12,8 @@ pub use enums::{
     ContactNibblePolicy, Curve, DeviceSource, ForeignMomentum, ForeignOutput, G4Mode, Rejection,
     SwipeRepeat, WorkspaceMode,
 };
-pub use file::{CONFIG_VERSION, Config, ParseError, parse, to_toml};
-pub use lenient::{Outcome, Warning};
+pub use file::{Config, ParseError, parse, to_toml};
+pub use lenient::Warning;
 pub use load::{Loaded, config_dir, load};
 pub use sections::{
     DeviceSettings, FeelSettings, GestureSettings, MomentumSettings, PalmRejectionSettings,

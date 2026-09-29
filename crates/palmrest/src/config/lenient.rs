@@ -8,23 +8,11 @@ use serde::de::DeserializeOwned;
 use std::fmt;
 use toml::{Table, Value};
 
-/// A key that was not read as written, and why.
+/// A key whose value was unusable, and why; the key's default is in force.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Warning {
     pub key: String,
     pub problem: String,
-    pub outcome: Outcome,
-}
-
-/// What was done about a key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Outcome {
-    /// The value was unusable; the key's default is in force.
-    DefaultUsed,
-    /// A deprecated key was read and converted to its replacement.
-    Converted,
-    /// A deprecated key was ignored because its replacement is set.
-    Ignored,
 }
 
 impl Warning {
@@ -33,19 +21,13 @@ impl Warning {
         Self {
             key: key.into(),
             problem: problem.into(),
-            outcome: Outcome::DefaultUsed,
         }
     }
 }
 
 impl fmt::Display for Warning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.outcome {
-            Outcome::DefaultUsed => {
-                write!(f, "{}: {} (using the default)", self.key, self.problem)
-            }
-            Outcome::Converted | Outcome::Ignored => write!(f, "{}: {}", self.key, self.problem),
-        }
+        write!(f, "{}: {} (using the default)", self.key, self.problem)
     }
 }
 

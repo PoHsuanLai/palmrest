@@ -1,7 +1,6 @@
 //! The whole of `palmrest/gestures.toml`, parsed leniently.
 
 use super::enums::{ForeignMomentum, ForeignOutput, Rejection};
-use super::legacy::{self, read_section};
 use super::lenient::{Warning, field, section};
 use super::sections::{
     DeviceSettings, FeelSettings, GestureSettings, MomentumSettings, PalmRejectionSettings,
@@ -10,13 +9,9 @@ use super::sections::{
 use serde::Serialize;
 use thiserror::Error;
 
-/// The schema version this build writes and understands.
-pub const CONFIG_VERSION: u16 = 1;
-
 /// Every setting the daemon reads.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Config {
-    pub version: u16,
     pub rejection: Rejection,
     pub foreign_output: ForeignOutput,
     pub foreign_momentum: ForeignMomentum,
@@ -34,7 +29,6 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            version: CONFIG_VERSION,
             rejection: Rejection::On,
             foreign_output: ForeignOutput::Touchpad,
             foreign_momentum: ForeignMomentum::Toolkit,
@@ -57,7 +51,6 @@ impl Default for Config {
 pub struct ParseError(pub String);
 
 crate::serde_settings!(
-    u16,
     super::units::Px,
     super::units::Ms,
     super::units::Percent,
@@ -86,51 +79,24 @@ pub fn parse(text: &str) -> Result<(Config, Vec<Warning>), ParseError> {
     let d = Config::default();
     let w = &mut warn;
     let config = Config {
-        version: field(&root, "", "version", d.version, w),
         rejection: field(&root, "", "rejection", d.rejection, w),
         foreign_output: field(&root, "", "foreign_output", d.foreign_output, w),
         foreign_momentum: field(&root, "", "foreign_momentum", d.foreign_momentum, w),
-        scroll: with_legacy(
-            &root,
-            "scroll",
-            legacy::SCROLL,
-            ScrollSettings::from_table,
-            w,
-        ),
+        scroll: ScrollSettings::from_table(&section(&root, "", "scroll", w), "scroll", w),
         feel: FeelSettings::from_table(&section(&root, "", "feel", w), "feel", w),
         momentum: MomentumSettings::from_table(&section(&root, "", "momentum", w), "momentum", w),
-        swipe: with_legacy(&root, "swipe", legacy::SWIPE, SwipeSettings::from_table, w),
-        tap: with_legacy(&root, "tap", legacy::TAP, TapSettings::from_table, w),
-        gestures: with_legacy(
-            &root,
-            "gestures",
-            legacy::GESTURES,
-            GestureSettings::from_table,
-            w,
-        ),
-        palm_rejection: with_legacy(
-            &root,
+        swipe: SwipeSettings::from_table(&section(&root, "", "swipe", w), "swipe", w),
+        tap: TapSettings::from_table(&section(&root, "", "tap", w), "tap", w),
+        gestures: GestureSettings::from_table(&section(&root, "", "gestures", w), "gestures", w),
+        palm_rejection: PalmRejectionSettings::from_table(
+            &section(&root, "", "palm_rejection", w),
             "palm_rejection",
-            legacy::PALM_REJECTION,
-            PalmRejectionSettings::from_table,
             w,
         ),
         touchpad: TouchpadSettings::from_table(&section(&root, "", "touchpad", w), "touchpad", w),
         device: DeviceSettings::from_table(&section(&root, "", "device", w), "device", w),
     };
     Ok((config, warn))
-}
-
-/// A section whose table may still hold deprecated raw-unit keys.
-fn with_legacy<S>(
-    root: &toml::Table,
-    key: &str,
-    keys: &[legacy::Legacy<S>],
-    from_table: fn(&toml::Table, &str, &mut Vec<Warning>) -> S,
-    w: &mut Vec<Warning>,
-) -> S {
-    let t = section(root, "", key, w);
-    read_section(&t, key, keys, |w| from_table(&t, key, w), w)
 }
 
 /// The defaults as TOML, for `palmrest --print-config` and the install script.
@@ -156,7 +122,7 @@ mod tests {
 
     #[test]
     fn a_bad_value_costs_only_its_key() {
-        let text = "rejection = \"sometimes\"\n[scroll]\nspeed = 30\nlock_threshold = 5000\nlock_ratio = \"x\"\n[swipe]\ncooldown_ms = 300\n";
+        let text = "rejection = \"sometimes\"\n[scroll]\nspeed = 30\nlock_threshold_x_um = 99999\nlock_ratio = \"x\"\n[swipe]\ncooldown_ms = 300\n";
         let (c, warn) = parse(text).unwrap();
         assert_eq!(c.scroll.speed.0, 30);
         assert_eq!(c.scroll.lock_threshold_x_um, Um(1538));
@@ -167,7 +133,7 @@ mod tests {
         let keys: Vec<&str> = warn.iter().map(|w| w.key.as_str()).collect();
         assert_eq!(
             keys,
-            ["rejection", "scroll.lock_threshold", "scroll.lock_ratio"]
+            ["rejection", "scroll.lock_threshold_x_um", "scroll.lock_ratio"]
         );
     }
 
@@ -177,9 +143,6 @@ mod tests {
         assert!(warn.is_empty());
         assert_eq!(c.gestures.host_swipe_d_um, Um(30000));
         assert!(to_toml(&c).contains("host_swipe_D_um = 30000"));
-        let (c, warn) = parse("[gestures]\nhost_swipe_D_units = 800\n").unwrap();
-        assert_eq!(c.gestures.host_swipe_d_um, Um(30769), "800 units at 26/mm");
-        assert_eq!(warn[0].key, "gestures.host_swipe_D_units");
     }
 
     #[test]

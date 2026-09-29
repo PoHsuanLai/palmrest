@@ -1,11 +1,10 @@
 //! The sections of `palmrest/gestures.toml`, one struct per table, every key with the default
 //! and range of 22-SETTINGS §3.9 / §3.10 (and `touchpad`, see FINDINGS).
 //!
-//! Lengths are micrometres (`_um`), converted from the old raw Magic Mouse 2 defaults at
-//! 26 units/mm across and 70 units/mm along, so the mouse computes exactly what it did
-//! (FINDINGS F25). A rule that measured a Euclidean distance, or compared both axes against
-//! one number, was anisotropic in millimetres all along; it keeps an `_x_um` / `_y_um` pair.
-//! The raw-unit keys are still read (`config::legacy`).
+//! Lengths are micrometres (`_um`). The defaults sit on the Magic Mouse 2 grid (26 units/mm
+//! across, 70 units/mm along), so the core rounds them back to whole sensor units. A rule that
+//! measures a Euclidean distance, or compares both axes against one number, is anisotropic in
+//! millimetres; it has an `_x_um` / `_y_um` pair.
 
 use super::enums::{ContactNibblePolicy, Curve, DeviceSource, G4Mode, SwipeRepeat, WorkspaceMode};
 use super::units::{Count, Fraction, Ms, Percent, Px, Um, Units};
