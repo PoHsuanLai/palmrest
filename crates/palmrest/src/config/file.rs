@@ -156,7 +156,7 @@ mod tests {
     fn the_presets_are_opt_in_keys() {
         use crate::config::{Curve, ForeignMomentum};
         let d = Config::default();
-        assert_eq!(d.feel.curve, Curve::Current);
+        assert_eq!(d.feel.curve, Curve::Classic);
         assert_eq!(d.foreign_momentum, ForeignMomentum::Toolkit);
         let text = "foreign_momentum = \"ours\"\n[feel]\ncurve = \"mac_like\"\nmac_like_gain_max = 4000\n[momentum]\nb = 1000\n";
         let (c, warn) = parse(text).unwrap();

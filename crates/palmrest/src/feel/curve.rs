@@ -1,8 +1,8 @@
 //! The acceleration curve: which gain turns a sample's raw units into px (`feel.curve`).
 //!
-//! `Current` is the Python daemon's pair of gains (velocity x repeat), kept bit for bit by
-//! `gain.rs`. `MacLike` replaces both with one function of finger speed, shaped after the
-//! published description of the reference desktop's scroll acceleration: slow motion is
+//! `Classic` is a pair of gains (velocity x repeat), computed by `gain.rs` and pinned by the
+//! reference-feel goldens. `MacLike` replaces both with one function of finger speed, shaped
+//! after the published description of the reference desktop's scroll acceleration: slow motion is
 //! precise (gain exactly 1, the base ratio of `scroll.speed` and `scroll.detent_px`), faster
 //! motion gains progressively, and the gain is capped. The shape is our own power law, fitted
 //! to that description, not to any vendor table:
@@ -35,14 +35,14 @@ pub struct MacLike {
 /// The curve in force, with its constants.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum CurveParams {
-    Current,
+    Classic,
     MacLike(MacLike),
 }
 
 impl CurveParams {
     pub fn from_settings(f: &FeelSettings) -> Self {
         match f.curve {
-            Curve::Current => Self::Current,
+            Curve::Classic => Self::Classic,
             Curve::MacLike => Self::MacLike(MacLike {
                 threshold: f64::from(f.mac_like_threshold_units_s.0),
                 scale: f64::from(f.mac_like_scale_units_s.0.max(1)),
@@ -79,7 +79,7 @@ mod tests {
         f.curve = Curve::MacLike;
         match CurveParams::from_settings(&f) {
             CurveParams::MacLike(m) => m,
-            CurveParams::Current => unreachable!("curve was set to MacLike"),
+            CurveParams::Classic => unreachable!("curve was set to MacLike"),
         }
     }
 

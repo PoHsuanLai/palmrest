@@ -69,7 +69,7 @@ pub struct Seen {
 /// on the Magic Mouse a non-zero size.
 pub fn is_contact(t: &FrameContact, policy: ContactNibblePolicy) -> bool {
     let counted = match policy {
-        ContactNibblePolicy::PythonParity => (1..=4).contains(&t.state.nibble()),
+        ContactNibblePolicy::OneToFour => (1..=4).contains(&t.state.nibble()),
         ContactNibblePolicy::KernelOnly => {
             matches!(t.state, TouchState::MakeTouch | TouchState::Touching)
         }
@@ -254,7 +254,7 @@ mod tests {
         for &(n, python, kernel) in CASES {
             t.state = TouchState::from_nibble(n);
             assert_eq!(
-                is_contact(&t, ContactNibblePolicy::PythonParity),
+                is_contact(&t, ContactNibblePolicy::OneToFour),
                 python,
                 "nibble {n}"
             );
@@ -270,7 +270,7 @@ mod tests {
             ..shape(&t)
         });
         assert!(
-            !is_contact(&t, ContactNibblePolicy::PythonParity),
+            !is_contact(&t, ContactNibblePolicy::OneToFour),
             "size 0 is not a contact"
         );
         t.shape = Shape::Unmeasured;

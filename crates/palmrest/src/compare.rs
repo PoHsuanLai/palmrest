@@ -25,11 +25,11 @@ pub struct CurveRun {
 /// The two runs.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Comparison {
-    pub current: CurveRun,
+    pub classic: CurveRun,
     pub mac_like: CurveRun,
 }
 
-/// Replays Magic Mouse hidraw `records` under `Current` and `MacLike`, every other key as in
+/// Replays Magic Mouse hidraw `records` under `Classic` and `MacLike`, every other key as in
 /// `cfg`.
 pub fn compare_curves(records: &[Record], cfg: &Config, timing: Timing) -> Comparison {
     compare_curves_from(&RecordedSource::MagicMouseHid, records, cfg, timing)
@@ -49,7 +49,7 @@ pub fn compare_curves_from(
         summarise(curve, &outs(&steps), tracker.peak_gain())
     };
     Comparison {
-        current: run(Curve::Current),
+        classic: run(Curve::Classic),
         mac_like: run(Curve::MacLike),
     }
 }
@@ -88,7 +88,7 @@ impl Comparison {
     pub fn table(&self) -> String {
         let row = |r: &CurveRun| {
             let name = match r.curve {
-                Curve::Current => "current",
+                Curve::Classic => "classic",
                 Curve::MacLike => "mac-like",
             };
             format!(
@@ -96,14 +96,14 @@ impl Comparison {
                 r.cumulative_px, r.net_x, r.net_y, r.peak_gain, r.strokes
             )
         };
-        let ratio = if self.current.cumulative_px > 0.0 {
-            self.mac_like.cumulative_px / self.current.cumulative_px
+        let ratio = if self.classic.cumulative_px > 0.0 {
+            self.mac_like.cumulative_px / self.classic.cumulative_px
         } else {
             0.0
         };
         format!(
-            "curve     cumulative_px     net_x     net_y peak_gain strokes\n{}{}mac-like / current cumulative px: {ratio:.3}\n",
-            row(&self.current),
+            "curve     cumulative_px     net_x     net_y peak_gain strokes\n{}{}mac-like / classic cumulative px: {ratio:.3}\n",
+            row(&self.classic),
             row(&self.mac_like)
         )
     }

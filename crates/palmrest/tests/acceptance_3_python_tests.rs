@@ -36,7 +36,7 @@ const PARAMS: LockParams = LockParams {
     velocity_gain_max: 2.0,
     repeat_gain_max: 1.0,
     detent_px: 60.0,
-    curve: CurveParams::Current,
+    curve: CurveParams::Classic,
 };
 
 /// `drag(filt, points, start=10.0, step=0.008)`: the summed hi-res (h, v) in Python's frame.

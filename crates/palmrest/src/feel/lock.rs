@@ -183,7 +183,7 @@ impl AxisLock {
         }
         let dt = self.last_motion.map_or(0.0, |t| now.float_since(t));
         let (repeat, velocity) = match p.curve {
-            CurveParams::Current => (
+            CurveParams::Classic => (
                 self.repeat_gain,
                 velocity_gain(raw, dt, p.velocity_gain_max),
             ),
@@ -299,7 +299,7 @@ mod tests {
         velocity_gain_max: 2.0,
         repeat_gain_max: 1.0,
         detent_px: 60.0,
-        curve: CurveParams::Current,
+        curve: CurveParams::Classic,
     };
 
     fn one(x: i32, y: i32) -> Vec<Sample> {

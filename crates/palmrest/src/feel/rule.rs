@@ -76,7 +76,7 @@ mod tests {
         velocity_gain_max: 2.0,
         repeat_gain_max: 1.0,
         detent_px: 60.0,
-        curve: CurveParams::Current,
+        curve: CurveParams::Classic,
     };
 
     #[test]

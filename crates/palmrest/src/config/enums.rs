@@ -19,7 +19,7 @@ pub enum ForeignOutput {
     /// The "palmrest touchpad" uinput device (O2).
     #[default]
     Touchpad,
-    /// The Python daemon's wheel device, identity and quantisation kept (O4).
+    /// A hi-res wheel device, "palmrest wheel" (O4): v120 frames, fractions carried.
     Wheel,
     Off,
 }
@@ -55,9 +55,9 @@ pub enum G4Mode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ContactNibblePolicy {
-    /// 1..=4, as the Python daemon.
+    /// 1..=4: in range (start, hover), making touch or touching.
     #[default]
-    PythonParity,
+    OneToFour,
     /// 3..=4 only, the kernel's "down".
     KernelOnly,
 }
@@ -66,10 +66,10 @@ pub enum ContactNibblePolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Curve {
-    /// The Python daemon's velocity and repeat gains, bit for bit.
+    /// A velocity gain times a repeat gain for quick successive strokes (`feel::gain`).
     #[default]
-    Current,
-    /// Precise below a finger speed, then a smooth power-law gain up to a cap (FINDINGS F22).
+    Classic,
+    /// Precise below a finger speed, then a smooth power-law gain up to a cap.
     MacLike,
 }
 

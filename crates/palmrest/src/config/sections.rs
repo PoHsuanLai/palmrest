@@ -69,7 +69,7 @@ settings_struct! {
         live_workspace_commit_velocity: Fraction = Fraction(1500);
         live_workspace_finish_min_ms: Ms = Ms(100);
         live_workspace_finish_max_ms: Ms = Ms(400);
-        contact_nibble_policy: ContactNibblePolicy = ContactNibblePolicy::PythonParity;
+        contact_nibble_policy: ContactNibblePolicy = ContactNibblePolicy::OneToFour;
         gesture_action_map: ActionMap = ActionMap::default();
     }
 }
@@ -123,7 +123,7 @@ settings_struct! {
     /// function rather than recognise a gesture, and are applied to whichever axis locked, so
     /// they stay in grid units rather than becoming x/y millimetre pairs (FINDINGS F25).
     pub struct FeelSettings {
-        curve: Curve = Curve::Current;
+        curve: Curve = Curve::Classic;
         mac_like_threshold_units_s: Count = Count(1500), in Count(0) => Count(20000);
         mac_like_scale_units_s: Count = Count(3000), in Count(100) => Count(20000);
         mac_like_exponent: Fraction = Fraction(1600), in Fraction(1000) => Fraction(4000);

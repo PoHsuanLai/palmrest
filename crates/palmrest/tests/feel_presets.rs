@@ -280,30 +280,30 @@ fn mac_like_is_precise_slow_and_faster_on_a_flick() {
     let cfg = Config::default();
     let slow = compare_curves(&support::load("parity_slow"), &cfg, Timing::Arrival);
     assert_eq!(slow.mac_like.peak_gain, 1.0, "slow motion is 1:1");
-    assert!(slow.current.peak_gain > 1.0);
-    assert!(slow.mac_like.cumulative_px < slow.current.cumulative_px);
+    assert!(slow.classic.peak_gain > 1.0);
+    assert!(slow.mac_like.cumulative_px < slow.classic.cumulative_px);
     assert_eq!(
-        slow.mac_like.strokes, slow.current.strokes,
+        slow.mac_like.strokes, slow.classic.strokes,
         "the lock is the same"
     );
 
     let flick = compare_curves(&support::load("flick_two_vertical"), &cfg, Timing::Arrival);
     assert!(flick.mac_like.peak_gain > 3.0, "{:?}", flick.mac_like);
     assert!(
-        (flick.current.peak_gain - 2.0).abs() < 1e-9,
+        (flick.classic.peak_gain - 2.0).abs() < 1e-9,
         "{:?}",
-        flick.current
+        flick.classic
     );
-    assert!(flick.mac_like.cumulative_px > 1.3 * flick.current.cumulative_px);
+    assert!(flick.mac_like.cumulative_px > 1.3 * flick.classic.cumulative_px);
     assert!(flick.table().contains("mac-like"));
 }
 
 #[test]
 fn the_default_curve_is_the_python_feel() {
-    // The parity suite (acceptance_2) runs with the defaults; here the explicit `Current` is
+    // The parity suite (acceptance_2) runs with the defaults; here the explicit `Classic` is
     // shown to be those defaults, frame for frame.
     let mut explicit = Config::default();
-    explicit.feel.curve = Curve::Current;
+    explicit.feel.curve = Curve::Classic;
     explicit.foreign_momentum = ForeignMomentum::Toolkit;
     for name in ["parity_fast", "parity_flicks", "flick_two_vertical"] {
         let records = support::load(name);
