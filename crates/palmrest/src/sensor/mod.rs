@@ -21,7 +21,7 @@ pub use magic_mouse::{MagicMouseHid, Model};
 pub use surface::{ButtonZones, DeviceClock, Extent, SizeMm, Surface};
 pub use units::{Mm, MmPoint, MmRange, Resolution, UnitsPerMm};
 
-use crate::decode::DecodeError;
+use crate::sensor::magic_mouse::decode::DecodeError;
 use thiserror::Error;
 
 /// A read that produced no frames, and why. The reader counts it and drops the read.

@@ -1,7 +1,7 @@
 //! Strokes for the gesture acceptance cases, in the kernel frame.
 
 use super::{Script, finger};
-use palmrest::report::{Buttons, Motion};
+use palmrest::sensor::magic_mouse::report::{Buttons, Motion};
 use palmrest::touch::RawTouch;
 
 /// A two-finger horizontal stroke: `steps` reports 12 ms apart moving `per` units each.

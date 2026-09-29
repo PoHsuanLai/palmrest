@@ -7,9 +7,9 @@ pub mod scenarios;
 mod sessions;
 mod strokes;
 
-use palmrest::encode::encode;
 use palmrest::recording::{self, Record};
-use palmrest::report::{Buttons, Motion, Report, Stamp};
+use palmrest::sensor::magic_mouse::encode::encode;
+use palmrest::sensor::magic_mouse::report::{Buttons, Motion, Report, Stamp};
 use palmrest::touch::{Point, RawTouch, TouchId, TouchState};
 use palmrest::{Mono, Out, ToHost};
 use std::path::PathBuf;

@@ -4,8 +4,8 @@
 //! the reader the bytes it will see from the device. Decode-after-encode is the identity for
 //! every report the mouse can send, which the round-trip test pins.
 
-use crate::decode::{DOUBLE_REPORT, HEADER_LEN, SHORT_LEN, TOUCH_REPORT};
-use crate::report::{Report, Stamp};
+use crate::sensor::magic_mouse::decode::{DOUBLE_REPORT, HEADER_LEN, SHORT_LEN, TOUCH_REPORT};
+use crate::sensor::magic_mouse::report::{Report, Stamp};
 use crate::touch::RawTouch;
 
 /// Encodes a report as the device would send it: header-only (8 bytes) when it has no touches
@@ -56,8 +56,8 @@ pub fn encode_touch(t: &RawTouch) -> [u8; 8] {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::decode::decode;
-    use crate::report::{Buttons, Motion};
+    use crate::sensor::magic_mouse::decode::decode;
+    use crate::sensor::magic_mouse::report::{Buttons, Motion};
     use crate::touch::{Point, TouchId, TouchState};
 
     fn touch(id: u8, x: i32, y: i32) -> RawTouch {

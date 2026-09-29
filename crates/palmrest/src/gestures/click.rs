@@ -4,7 +4,7 @@
 //! and the running scroll is Cancelled at the press.
 
 use crate::feel::Hold;
-use crate::report::Buttons;
+use crate::sensor::magic_mouse::report::Buttons;
 use crate::time::Mono;
 use std::time::Duration;
 

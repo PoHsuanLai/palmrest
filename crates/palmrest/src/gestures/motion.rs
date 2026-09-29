@@ -3,7 +3,7 @@
 //! Gripping the mouse to move it drags fingers across the surface; doubling the lock threshold
 //! while the sensor reports motion keeps that from scrolling.
 
-use crate::report::Motion;
+use crate::sensor::magic_mouse::report::Motion;
 use crate::time::Mono;
 use std::collections::VecDeque;
 use std::time::Duration;

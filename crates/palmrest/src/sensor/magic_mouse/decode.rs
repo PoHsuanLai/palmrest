@@ -3,7 +3,7 @@
 //! Every byte came from a radio, so nothing here panics: a malformed read is a `DecodeError`,
 //! counted by the reader and dropped.
 
-use crate::report::{Buttons, Motion, Report, Stamp};
+use crate::sensor::magic_mouse::report::{Buttons, Motion, Report, Stamp};
 use crate::touch::{RawTouch, TouchId, TouchState, sign_extend_12};
 use thiserror::Error;
 

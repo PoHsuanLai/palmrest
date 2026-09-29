@@ -11,9 +11,9 @@ use super::strokes::{
     rest_side_band, swipe_199, swipe_vertical_then_horizontal, taps,
 };
 use super::{Script, finger, python_finger};
-use palmrest::encode::encode_double;
 use palmrest::recording::Record;
-use palmrest::report::Buttons;
+use palmrest::sensor::magic_mouse::encode::encode_double;
+use palmrest::sensor::magic_mouse::report::Buttons;
 
 /// Header of the decoder goldens: left button, dx 5, dy -3, ticks 3147.
 pub const GOLDEN_HEADER: [u8; 14] = [

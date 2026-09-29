@@ -2,9 +2,9 @@
 
 mod support;
 
-use palmrest::report::{Buttons, Motion, Report, Stamp};
+use palmrest::sensor::magic_mouse::decode::{DecodeError, decode};
+use palmrest::sensor::magic_mouse::report::{Buttons, Motion, Report, Stamp};
 use palmrest::touch::{Point, RawTouch, TouchId, TouchState, wrap_delta};
-use palmrest::{DecodeError, decode};
 
 fn one(name: &str) -> Result<Vec<Report>, DecodeError> {
     let records = support::load(name);

@@ -5,8 +5,8 @@
 //! only if that fit explains arrival times to within 1 ms at p95. Otherwise, and until the fit
 //! exists, the arrival time is the event time.
 
-use crate::report::Stamp;
 use crate::sensor::FrameStamp;
+use crate::sensor::magic_mouse::report::Stamp;
 use crate::time::Mono;
 use std::time::Duration;
 

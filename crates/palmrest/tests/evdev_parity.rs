@@ -9,16 +9,17 @@
 mod support;
 
 use palmrest::Config;
+use palmrest::Mono;
 use palmrest::outputs::events::{
     ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_SLOT, ABS_MT_TRACKING_ID, BTN_LEFT, EV_ABS,
     EV_KEY, EV_REL, EV_SYN, InputEvent, SYN_REPORT,
 };
 use palmrest::recording::{Record, RecordedSource};
 use palmrest::replay::{Step, Timing, replay_from};
-use palmrest::report::{Buttons, Report};
 use palmrest::sensor::evdev::{AbsAxis, EvdevSpec, TimedEvent};
+use palmrest::sensor::magic_mouse::decode::decode;
+use palmrest::sensor::magic_mouse::report::{Buttons, Report};
 use palmrest::touch::TouchState;
-use palmrest::{Mono, decode};
 use std::collections::BTreeMap;
 
 const BTN_RIGHT: u16 = 0x111;
