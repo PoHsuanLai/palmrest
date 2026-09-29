@@ -173,7 +173,7 @@ impl Tracker {
         };
 
         let (s, mut out) = s.tick(now);
-        let (s, touches) = s.touches(seen.samples.is_empty(), ActiveTouch::Down);
+        let (s, touches) = s.touches(active(&seen.samples), ActiveTouch::Down);
         out.extend(touches);
         let (s, cancelled) = match (press, seen.palm) {
             (Press::Edge, _) | (_, PalmTurn::InSet) => s.cancel_scroll(now),
@@ -186,18 +186,14 @@ impl Tracker {
         out.extend(scrolled);
         let (s, fired) = s.gestures(&seen.samples, now, hold);
         out.extend(fired);
-        let (s, touches) = s.touches(seen.samples.is_empty(), ActiveTouch::Up);
+        let (s, touches) = s.touches(active(&seen.samples), ActiveTouch::Up);
         out.extend(touches);
         (s, out)
     }
 
-    /// `Touches{Down}` before this report's scroll phases, `Touches{Up}` after them.
-    fn touches(self, empty: bool, which: ActiveTouch) -> (Self, Vec<Out>) {
-        let next = if empty {
-            ActiveTouch::Up
-        } else {
-            ActiveTouch::Down
-        };
+    /// `Touches{Down}` before this report's scroll phases, `Touches{Up}` after them: `next` is
+    /// this report's state, `which` the edge this call may emit.
+    fn touches(self, next: ActiveTouch, which: ActiveTouch) -> (Self, Vec<Out>) {
         if next == which && next != self.touching {
             (
                 Self {
@@ -316,5 +312,14 @@ fn pick(dir: FingerDirection, right: Gesture, left: Gesture) -> Gesture {
     match dir {
         FingerDirection::Right => right,
         FingerDirection::Left => left,
+    }
+}
+
+/// Whether any contact is down in this report.
+fn active(samples: &[crate::feel::Sample]) -> ActiveTouch {
+    if samples.is_empty() {
+        ActiveTouch::Up
+    } else {
+        ActiveTouch::Down
     }
 }
