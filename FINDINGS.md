@@ -21,9 +21,11 @@ the report rate (90 Hz assumed), 0xF7 doubles actually arriving, and every P1-P5
 (12.9 item 4).
 
 **The shipped scroll defaults are 22 / 2.3.** `scroll.speed = 22` and
-`scroll.repeat_gain_max = 2300` as 12.6 documents them. The Python daemon this replaces ran at
-speed 32 and acceleration 1.0 on the development machine; the design defaults may want to
-become 32 and 1000.
+`scroll.repeat_gain_max = 2300`, as 12.6 documents them and as the Python daemon ran on the
+development machine (its built-in `SCROLL_SPEED` 22 and `SCROLL_ACCEL_MAX` 2.3, no overrides in
+its unit), so switching daemons keeps the feel; the frozen `feel_*` goldens hold them. The 32 in
+`/sys/module/hid_magicmouse/parameters/scroll_speed` is the kernel's own wheel emulation, off
+while palmrest scrolls. Settled 2026-09-30.
 
 **The foreign outputs on KDE.** The default `foreign_output = "touchpad"` scrolls through a new
 device, "palmrest touchpad", and `"wheel"` through "palmrest wheel"; Plasma has no saved
