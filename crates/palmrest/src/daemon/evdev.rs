@@ -10,8 +10,8 @@
 //! from), is skipped, so touchpads stay with libinput and shell-host's own scroll physics. The
 //! node is opened read-only and never grabbed.
 
-use crate::sensor::evdev::{AbsAxis, EvdevSpec};
 use super::sys::{self, AbsInfo, MtAxis};
+use crate::sensor::evdev::{AbsAxis, EvdevSpec};
 use palmrest_protocol::DeviceInfo;
 use rustix::fd::OwnedFd;
 use rustix::fs::{Mode, OFlags};

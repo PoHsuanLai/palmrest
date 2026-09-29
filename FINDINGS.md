@@ -8,7 +8,7 @@ Open items and standing facts. Design references are to quire's `design/NN` docu
 **Manual acceptance, waiting for the user and the device.** Items 1-7 of 12.8 pass as tests
 (`tests/acceptance_1_decode.rs`, `acceptance_2_reference_feel.rs`,
 `acceptance_3_reference_cases.rs`, `acceptance_4_to_7.rs`), with the replay half of item 10
-(suppression) in `acceptance_4_to_7.rs` and the socket half in `tests/socket.rs`. Item 11 is
+(suppression) in `acceptance_4_to_7.rs` and the socket half in `daemon/socket/tests.rs`. Item 11 is
 measured on replay only (see Latency). Manual: **8** (virtual touchpad under
 `libinput debug-events`), **9** (calibration of the 0.25 mm/px factor), **10 live** (O2/O4
 silent while a real shell-host claims the pointer), **11 live** (HID read to socket / uinput
@@ -176,7 +176,7 @@ The Magic Mouse 1 is refused on hidraw with a pointer to `source = "evdev"`: it 
 **0xF7 doubles.** palmrest checks the report id and decodes both halves of a Bluetooth double.
 The reference sessions contain none.
 
-**Latency, replay only.** 10 000 synthesised reads (`tests/latency.rs`, release build): read
+**Latency, replay only.** 10 000 synthesised reads (`daemon/latency/tests.rs`, release build): read
 bytes to socket bytes p50 570 ns, p95 680 ns, p99 730 ns; to uinput event bytes p95 810 ns.
 Debug build: p95 5.3 us / 5.9 us. The budget is 2 ms p95; the live figure adds the eventfd
 hand-off, the send, and the kernel.

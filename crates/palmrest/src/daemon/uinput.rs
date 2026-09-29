@@ -4,6 +4,10 @@
 //! `RecordingEmitter`. The event sequences it writes are the pure `events` functions, which
 //! are tested; what is untested here is only device creation (acceptance 8-11, manual).
 
+use super::sys::{self, AbsInfo, BitSet, InputId, UinputAbsSetup, UinputSetup};
+use crate::config::ForeignOutput;
+use crate::feel::WheelDelta;
+use crate::keys::KeyCombo;
 use crate::outputs::events::{
     ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_SLOT, ABS_MT_TRACKING_ID, ABS_X, ABS_Y, BTN_LEFT,
     BTN_TOOL_DOUBLETAP, BTN_TOOL_FINGER, BTN_TOOL_QUADTAP, BTN_TOOL_TRIPLETAP, BTN_TOUCH, EV_ABS,
@@ -12,10 +16,6 @@ use crate::outputs::events::{
 };
 use crate::outputs::pad::{PAD_X_MAX, PAD_Y_MAX, PadFrame, UNITS_PER_MM};
 use crate::outputs::{Emitter, OutputError};
-use crate::config::ForeignOutput;
-use crate::feel::WheelDelta;
-use crate::keys::KeyCombo;
-use super::sys::{self, AbsInfo, BitSet, InputId, UinputAbsSetup, UinputSetup};
 use rustix::fd::OwnedFd;
 use rustix::fs::{Mode, OFlags};
 use std::io;

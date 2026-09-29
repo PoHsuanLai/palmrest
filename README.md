@@ -213,4 +213,4 @@ checks the default scroll feel against the goldens in `tests/fixtures/reference/
 are frozen: they were produced once by the retired Python daemon, and nothing regenerates them.
 A change to a `feel_*` or `case_*` scenario therefore breaks the suite by design.
 
-The latency measurement is `cargo test --release --test latency -- --ignored --nocapture`.
+The latency measurement is `cargo test --release -p palmrest --lib latency -- --ignored --nocapture`.

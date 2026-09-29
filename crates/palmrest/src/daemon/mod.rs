@@ -17,11 +17,11 @@ pub mod uinput;
 use crate::action::Desktop;
 use crate::config::{self, Loaded};
 use crate::outputs::Emitter;
-use uinput::UinputEmitter;
 use crate::tracker::Tracker;
 use devices::{Devices, Factory};
 use std::path::PathBuf;
 use std::sync::mpsc;
+use uinput::UinputEmitter;
 
 /// Runs the daemon: never returns unless setup fails.
 pub fn run() -> Result<(), String> {

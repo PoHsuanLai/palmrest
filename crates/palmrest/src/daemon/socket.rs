@@ -264,13 +264,4 @@ fn send(c: &Client, m: &ToHost) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn any_claim_wins() {
-        assert_eq!(aggregate([]), Over::NotOurs);
-        assert_eq!(aggregate([Over::NotOurs, Over::Ours]), Over::Ours);
-        assert_eq!(aggregate([Over::NotOurs, Over::NotOurs]), Over::NotOurs);
-    }
-}
+mod tests;

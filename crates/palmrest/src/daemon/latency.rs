@@ -28,13 +28,8 @@ pub struct LatencyReport {
     pub uinput: Percentiles,
 }
 
-/// Replays Magic Mouse hidraw `records`, timing each read.
-pub fn measure(records: &[Record], cfg: Config) -> LatencyReport {
-    measure_from(&RecordedSource::MagicMouseHid, records, cfg)
-}
-
-/// `measure` for records from any source.
-pub fn measure_from(source: &RecordedSource, records: &[Record], cfg: Config) -> LatencyReport {
+/// Replays `records` read from `source`, timing each read.
+pub fn measure(source: &RecordedSource, records: &[Record], cfg: Config) -> LatencyReport {
     let mut sensor = source.sensor();
     let mut tracker = Tracker::on(cfg, sensor.surface());
     let mut clock = StampClock::new();
@@ -92,3 +87,6 @@ fn percentiles(mut v: Vec<Duration>) -> Percentiles {
         max: v.last().copied().unwrap_or_default(),
     }
 }
+
+#[cfg(test)]
+mod tests;

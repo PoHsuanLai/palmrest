@@ -2,8 +2,8 @@
 
 use palmrest::compare::compare_curves_from;
 use palmrest::config::{self, Config};
-use palmrest::daemon::{self, latency, record};
 use palmrest::daemon::uinput::{self, PROBE_PERMIT, ProbePermit};
+use palmrest::daemon::{self, latency, record};
 use palmrest::recording;
 use palmrest::replay::{Timing, replay_from};
 use palmrest_protocol as protocol;
@@ -76,7 +76,7 @@ fn replay_cmd(file: &str, flags: &[&str]) -> Result<(), String> {
     let env = |k: &str| std::env::var(k).ok();
     let cfg = config::load(config::config_dir(env).as_deref()).config;
     if flags.contains(&"--latency") {
-        let r = latency::measure_from(&source, &records, cfg);
+        let r = latency::measure(&source, &records, cfg);
         println!("reads {}", r.n);
         println!(
             "socket  p50 {:?} p95 {:?} p99 {:?} max {:?}",

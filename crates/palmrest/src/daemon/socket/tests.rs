@@ -1,7 +1,7 @@
-//! The O1 socket end to end on a private path: Hello first, fan-out, filters, and a
+//! The socket thread end to end on a private path: Hello first, fan-out, filters, and a
 //! subscriber's `PointerOver` becoming the tracker's claim (acceptance 10's socket half).
 
-use palmrest::daemon::socket::{self, ToSocket};
+use super::{ToSocket, aggregate, bind, spawn};
 use palmrest_protocol::{
     self as protocol, ActiveTouch, DeviceInfo, Filter, Over, PROTOCOL_VERSION, TapKind, ToDaemon,
     ToHost, Topic,
@@ -10,6 +10,13 @@ use rustix::fd::OwnedFd;
 use rustix::net::{AddressFamily, RecvFlags, SendFlags, SocketAddrUnix, SocketType};
 use std::sync::mpsc;
 use std::time::Duration;
+
+#[test]
+fn any_claim_wins() {
+    assert_eq!(aggregate([]), Over::NotOurs);
+    assert_eq!(aggregate([Over::NotOurs, Over::Ours]), Over::Ours);
+    assert_eq!(aggregate([Over::NotOurs, Over::NotOurs]), Over::NotOurs);
+}
 
 fn connect(path: &std::path::Path) -> OwnedFd {
     let fd = rustix::net::socket(AddressFamily::UNIX, SocketType::SEQPACKET, None).unwrap();
@@ -37,14 +44,14 @@ fn send(fd: &OwnedFd, m: &ToDaemon) {
 fn hello_fanout_filters_and_claims() {
     let dir = std::env::temp_dir().join(format!("palmrest-sock-{}", std::process::id()));
     let path = dir.join("events.sock");
-    let listener = socket::bind(&path).unwrap();
+    let listener = bind(&path).unwrap();
     use std::os::unix::fs::PermissionsExt;
     assert_eq!(
         std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
         0o600
     );
     let (claims_tx, claims) = mpsc::channel();
-    let handle = socket::spawn(listener, claims_tx).unwrap();
+    let handle = spawn(listener, claims_tx).unwrap();
 
     let a = connect(&path);
     assert!(matches!(
