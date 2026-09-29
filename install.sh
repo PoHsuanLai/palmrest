@@ -26,7 +26,7 @@ The system files are not installed yet. Run once:
   sudo install -Dm644 "$HERE/dist/99-palmrest.conf" /etc/modprobe.d/99-palmrest.conf
   echo 0 | sudo tee /sys/module/hid_magicmouse/parameters/emulate_scroll_wheel
   sudo udevadm control --reload-rules
-  sudo udevadm trigger --subsystem-match=hidraw
+  sudo udevadm trigger --subsystem-match=hidraw --subsystem-match=misc
   systemctl --user restart $UNIT
 STEPS
 fi

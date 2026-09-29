@@ -122,13 +122,12 @@ palmrest drives the user's only pointing device, so:
 `dist/palmrest.service` as a user unit and enables it. Two system files need root, and the
 script prints the commands for them rather than running sudo:
 
-- `dist/70-palmrest.rules` to `/etc/udev/rules.d/`: read access to the Magic Mouse 2's hidraw
-  node for the active session (`uaccess`).
+- `dist/70-palmrest.rules` to `/etc/udev/rules.d/`: for the active session (`uaccess`), read
+  access to the Magic Mouse 2's hidraw node and write access to `/dev/uinput` for palmrest's
+  virtual devices.
 - `dist/99-palmrest.conf` to `/etc/modprobe.d/`: `hid_magicmouse` keeps the pointer and clicks
   (`emulate_3button=1`) and stops its own wheel emulation (`emulate_scroll_wheel=0`), because
   palmrest scrolls.
-
-palmrest also needs write access to `/dev/uinput` for its virtual devices.
 
 ## Retiring the Python daemon
 
@@ -141,7 +140,7 @@ sudo install -Dm644 dist/70-palmrest.rules /etc/udev/rules.d/70-palmrest.rules
 sudo install -Dm644 dist/99-palmrest.conf /etc/modprobe.d/99-palmrest.conf
 echo 0 | sudo tee /sys/module/hid_magicmouse/parameters/emulate_scroll_wheel
 sudo udevadm control --reload-rules
-sudo udevadm trigger --subsystem-match=hidraw
+sudo udevadm trigger --subsystem-match=hidraw --subsystem-match=misc
 ./install.sh                                    # builds, installs and enables palmrest
 ```
 
