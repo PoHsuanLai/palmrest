@@ -98,10 +98,10 @@ fn light_touch_never_joins_but_may_continue() {
     let got = run(
         &cfg,
         &[
-            (0, vec![raw(1, 0, 0, 5, 20)]),
+            (0, vec![raw(1, 0, 0, 1, 20)]),
             (10, vec![raw(1, 0, 0, 12, 20)]),
-            (20, vec![raw(1, 0, 0, 4, 20)]),
-            (30, vec![raw(1, 0, 0, 4, 20), raw(2, 300, 0, 4, 20)]),
+            (20, vec![raw(1, 0, 0, 1, 20)]),
+            (30, vec![raw(1, 0, 0, 1, 20), raw(2, 300, 0, 1, 20)]),
         ],
     );
     assert_eq!(got, [vec![], vec![1], vec![1], vec![1]]);
@@ -146,7 +146,7 @@ fn palm_is_rejected_and_reported_when_it_was_counted() {
     let mut c = Contacts::default();
     let (n, _) = c.step(&[raw(1, 0, 0, 12, 20)], Mono(0), &cfg, &b);
     c = n;
-    let (n, seen) = c.step(&[raw(1, 0, 0, 12, 70)], Mono::from_millis(10), &cfg, &b);
+    let (n, seen) = c.step(&[raw(1, 0, 0, 12, 250)], Mono::from_millis(10), &cfg, &b);
     assert_eq!(seen.palm, PalmTurn::InSet);
     assert!(seen.samples.is_empty());
     let (_, seen) = n.step(&[raw(1, 0, 0, 12, 20)], Mono::from_millis(20), &cfg, &b);

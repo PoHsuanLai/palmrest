@@ -119,8 +119,9 @@ fn timed(steps: &[Step]) -> Vec<(Mono, String)> {
 }
 
 /// Fixtures whose outcome rests on the Magic Mouse's size or major axis, which evdev does not
-/// carry: a palm landing mid-scroll (P3) cancels on hidraw and scrolls on through evdev.
-const SHAPE_DEPENDENT: &[&str] = &["palm_during_scroll"];
+/// carry: a palm landing mid-scroll (P3) cancels on hidraw and scrolls on through evdev, and the
+/// real recordings' light lift-off frames (P1) end strokes on hidraw only.
+const SHAPE_DEPENDENT: &[&str] = &["palm_during_scroll", "recorded_rest", "recorded_scroll"];
 
 #[test]
 fn every_fixture_replays_the_same_through_evdev() {

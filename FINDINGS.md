@@ -5,6 +5,16 @@ Open items and standing facts. Design references are to quire's `design/NN` docu
 
 ## Open items
 
+**Palm rejection P1 and P3 calibrated on the device (2026-09-30).** The guessed defaults
+(light below size 8, palm at major 64 or more) rejected every touch on the first real install,
+so the mouse did not scroll: on this Magic Mouse 2 (Bluetooth) scrolling fingers measure 120 to
+223 major units and size 7 to 17, and a resting hand 70 to 196 and 2 to 12. Size cannot tell
+them apart; motion does (P2 and the axis lock). Now light is size 0 to 1 (lift-off frames only)
+and a palm is major 240 or more. `tests/recorded_calibration.rs` replays the two recordings
+(`recorded_scroll`, `recorded_rest`): rejection keeps 98% of the scrolling and a resting hand
+leaks 19 hi-res units in 29 s (95 with rejection off). The Python daemon had no rejection, only
+the axis lock. Recalibrate from new `palmrest record` sessions on another device.
+
 **Manual acceptance, waiting for the user and the device.** Items 1-7 of 12.8 pass as tests
 (`tests/decode.rs`, `reference_feel.rs`, `reference_cases.rs`, `gestures_replay.rs`), with the
 replay half of item 10 (suppression) in `gestures_replay.rs` and the socket half in
@@ -17,8 +27,8 @@ write on the device), **12** (timestamp fit residual on the device).
 **No real recording.** Every fixture is synthesised from the documented layout; the five
 reference-feel sessions are synthesised with seeded jitter, not recorded as 12.8 item 2 asks.
 Unproven until recorded: the canonical frame's sign (+y toward the user), the rear band's side,
-the report rate (90 Hz assumed), 0xF7 doubles actually arriving, and every P1-P5 threshold
-(12.9 item 4).
+the report rate (90 Hz assumed), 0xF7 doubles actually arriving, and the P2 band widths and P4/P5 thresholds (12.9 item 4;
+P1 and P3 are calibrated, below).
 
 **The shipped scroll defaults are 22 / 2.3.** `scroll.speed = 22` and
 `scroll.repeat_gain_max = 2300`, as 12.6 documents them and as the Python daemon ran on the

@@ -119,7 +119,7 @@ pub fn palm_during_scroll() -> Script {
         s.at(
             10.0 * f64::from(i),
             vec![RawTouch {
-                major: 90,
+                major: 250,
                 ..finger(1, 0, -800 + 8 * i)
             }],
         )

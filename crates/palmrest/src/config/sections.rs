@@ -70,7 +70,7 @@ settings_struct! {
     /// `[palm_rejection]`: rules P1-P5 (12.3.3).
     pub struct PalmRejectionSettings {
         /// P1, on the Magic Mouse's own 0..=63 contact size (other sensors have none).
-        light_touch_size_max: Units = Units(8);
+        light_touch_size_max: Units = Units(2);
         /// P2's side bands: their width from the left and right edges of the surface.
         side_band_left_um: Um = Um(7692);
         side_band_right_um: Um = Um(7615);
@@ -80,7 +80,7 @@ settings_struct! {
         resting_move_floor_y_um: Um = Um(429);
         resting_window_ms: Ms = Ms(150);
         /// P3, on the Magic Mouse's own major axis units (other sensors have none).
-        large_contact_major_units: Units = Units(64);
+        large_contact_major_units: Units = Units(240);
         click_guard_ms: Ms = Ms(200);
         // TODO(untested): P5 is in the sensor's own mouse counts per second, so it means
         // whatever another mouse's CPI makes it; only the Magic Mouse's counts are known.
