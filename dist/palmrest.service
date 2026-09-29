@@ -3,8 +3,6 @@ Description=palmrest: Magic Mouse gestures (scroll, swipes, double-taps)
 Documentation=https://github.com/PoHsuanLai/palmrest
 PartOf=graphical-session.target
 After=graphical-session.target
-# Two daemons would both scroll every stroke.
-Conflicts=magic-mouse-kde.service
 
 [Service]
 Type=simple

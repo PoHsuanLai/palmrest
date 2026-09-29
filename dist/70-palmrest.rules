@@ -1,0 +1,4 @@
+# palmrest: raw touch reports of the Magic Mouse 2 (Bluetooth 004C:0269) for the active session.
+# Install to /etc/udev/rules.d. Keep the name lexically before systemd's 73-seat-late.rules so
+# uaccess runs.
+SUBSYSTEM=="hidraw", KERNELS=="0005:004C:0269.*", MODE="0660", TAG+="uaccess"
