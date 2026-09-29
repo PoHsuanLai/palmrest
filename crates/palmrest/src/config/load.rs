@@ -1,18 +1,12 @@
-//! Where the file lives and how it is read.
-//!
-//! 22-SETTINGS §2 names `$XDG_CONFIG_HOME/palmrest/gestures.toml` as the authority; 12.3.12
-//! still says `config.toml`. Both are read, `gestures.toml` first, so a file written under either
-//! name takes effect (FINDINGS).
+//! Where the file lives and how it is read: `$XDG_CONFIG_HOME/palmrest/gestures.toml`
+//! (22-SETTINGS §2).
 
-use super::env::apply_env;
 use super::file::{Config, parse};
 use super::lenient::Warning;
 use std::path::{Path, PathBuf};
 
 /// The file name the Settings app writes.
 pub const FILE_NAME: &str = "gestures.toml";
-/// The name 12-BEHAVIOUR-gestures uses; read when `gestures.toml` is absent.
-pub const LEGACY_FILE_NAME: &str = "config.toml";
 
 /// The directory holding the file: `$XDG_CONFIG_HOME/palmrest`, else `~/.config/palmrest`.
 pub fn config_dir(lookup: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
@@ -35,17 +29,12 @@ pub struct Loaded {
     pub warnings: Vec<Warning>,
 }
 
-/// Reads the file from `dir` (if any) and applies the environment. A missing file is the
-/// defaults; an unreadable or non-TOML file is the defaults plus a warning, because the mouse
-/// must keep scrolling whatever the file says.
-pub fn load(dir: Option<&Path>, lookup: impl Fn(&str) -> Option<String>) -> Loaded {
-    let found = dir.and_then(|d| {
-        [FILE_NAME, LEGACY_FILE_NAME]
-            .iter()
-            .map(|n| d.join(n))
-            .find(|p| p.exists())
-    });
-    let (config, mut warnings) = match &found {
+/// Reads the file from `dir` (if any). A missing file is the defaults; an unreadable or
+/// non-TOML file is the defaults plus a warning, because the mouse must keep scrolling whatever
+/// the file says.
+pub fn load(dir: Option<&Path>) -> Loaded {
+    let found = dir.map(|d| d.join(FILE_NAME)).filter(|p| p.exists());
+    let (config, warnings) = match &found {
         None => (Config::default(), Vec::new()),
         Some(p) => match std::fs::read_to_string(p) {
             Ok(text) => parse(&text)
@@ -53,8 +42,6 @@ pub fn load(dir: Option<&Path>, lookup: impl Fn(&str) -> Option<String>) -> Load
             Err(e) => (Config::default(), vec![whole_file(p, e.to_string())]),
         },
     };
-    let (config, env_warnings) = apply_env(config, lookup);
-    warnings.extend(env_warnings);
     Loaded {
         config,
         source: found,
@@ -85,7 +72,7 @@ mod tests {
 
     #[test]
     fn missing_dir_is_defaults() {
-        let l = load(None, |_| None);
+        let l = load(None);
         assert_eq!(l.config, Config::default());
         assert!(l.warnings.is_empty());
     }

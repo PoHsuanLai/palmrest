@@ -60,7 +60,7 @@ fn record_cmd(file: &str, total_secs: u64) -> Result<(), String> {
         total: Duration::from_secs(total_secs),
     };
     let env = |k: &str| std::env::var(k).ok();
-    let source = config::load(config::config_dir(env).as_deref(), env)
+    let source = config::load(config::config_dir(env).as_deref())
         .config
         .device
         .source;
@@ -74,7 +74,7 @@ fn replay_cmd(file: &str, flags: &[&str]) -> Result<(), String> {
     let rec = recording::read(&bytes).map_err(|e| format!("{file}: {e}"))?;
     let (source, records) = (rec.source, rec.records);
     let env = |k: &str| std::env::var(k).ok();
-    let cfg = config::load(config::config_dir(env).as_deref(), env).config;
+    let cfg = config::load(config::config_dir(env).as_deref()).config;
     if flags.contains(&"--latency") {
         let r = latency::measure_from(&source, &records, cfg);
         println!("reads {}", r.n);

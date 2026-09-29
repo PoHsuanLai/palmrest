@@ -25,7 +25,7 @@ use std::sync::mpsc;
 pub fn run() -> Result<(), String> {
     let env = |k: &str| std::env::var(k).ok();
     let dir = config::config_dir(env);
-    let loaded: Loaded = config::load(dir.as_deref(), env);
+    let loaded: Loaded = config::load(dir.as_deref());
     loaded
         .warnings
         .iter()
