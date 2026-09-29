@@ -1,9 +1,10 @@
 //! palmrest: the Magic Mouse gesture daemon (12-BEHAVIOUR-gestures).
 //!
 //! The pure core (`sensor`, `touch`, `stamp`, `feel`, `gestures`, `tracker`, `action`,
-//! `config`) takes bytes and instants and returns values; `daemon` owns every
-//! thread, socket, device and clock, and `daemon::sys` holds the only `unsafe`. The Magic Mouse's own
-//! codec (`decode`, `encode`, `report`) lives in `sensor::magic_mouse`.
+//! `config`, `outputs`) takes bytes and instants and returns values; `recording` and `replay`
+//! feed recorded reads through it. The daemon owns every thread, socket, device and clock, and
+//! its `sys` holds the only `unsafe`; `command::run` is the one way in to it. The socket
+//! messages are the `palmrest-protocol` crate.
 
 pub mod action;
 pub mod command;
