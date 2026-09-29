@@ -163,7 +163,7 @@ the X lock to the lift.
 `DeviceInfo` then `DeviceGone`. The `f32` fields keep `ToHost` from deriving `Eq`. A subscriber
 whose queue is full misses that message rather than delaying the reader.
 
-**`unsafe` lives in `sys.rs` only.** Each block has a SAFETY comment; ioctl opcodes are checked
+**`unsafe` lives in `daemon/sys.rs` only.** Each block has a SAFETY comment; ioctl opcodes are checked
 against the header values in a unit test. Licences pass `cargo deny`.
 
 **Discovery matches fields, not substrings.** `HID_ID` is parsed as bus:vendor:product and

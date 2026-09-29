@@ -11,11 +11,13 @@ pub mod reader;
 pub mod record;
 pub mod socket;
 pub mod source;
+pub(crate) mod sys;
+pub mod uinput;
 
 use crate::action::Desktop;
 use crate::config::{self, Loaded};
 use crate::outputs::Emitter;
-use crate::outputs::uinput::UinputEmitter;
+use uinput::UinputEmitter;
 use crate::tracker::Tracker;
 use devices::{Devices, Factory};
 use std::path::PathBuf;

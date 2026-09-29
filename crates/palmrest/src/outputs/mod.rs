@@ -5,7 +5,6 @@
 
 pub mod events;
 pub mod pad;
-pub mod uinput;
 
 use crate::feel::WheelDelta;
 use crate::keys::KeyCombo;

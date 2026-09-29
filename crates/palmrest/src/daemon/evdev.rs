@@ -11,7 +11,7 @@
 //! node is opened read-only and never grabbed.
 
 use crate::sensor::evdev::{AbsAxis, EvdevSpec};
-use crate::sys::{self, AbsInfo, MtAxis};
+use super::sys::{self, AbsInfo, MtAxis};
 use palmrest_protocol::DeviceInfo;
 use rustix::fd::OwnedFd;
 use rustix::fs::{Mode, OFlags};

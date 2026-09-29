@@ -4,18 +4,18 @@
 //! `RecordingEmitter`. The event sequences it writes are the pure `events` functions, which
 //! are tested; what is untested here is only device creation (acceptance 8-11, manual).
 
-use super::events::{
+use crate::outputs::events::{
     ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_SLOT, ABS_MT_TRACKING_ID, ABS_X, ABS_Y, BTN_LEFT,
     BTN_TOOL_DOUBLETAP, BTN_TOOL_FINGER, BTN_TOOL_QUADTAP, BTN_TOOL_TRIPLETAP, BTN_TOUCH, EV_ABS,
     EV_KEY, EV_REL, EV_SYN, InputEvent, PAD_SLOTS, PadEncoder, REL_HWHEEL, REL_HWHEEL_HI_RES,
     REL_WHEEL, REL_WHEEL_HI_RES, key_events, wheel_events,
 };
-use super::pad::{PAD_X_MAX, PAD_Y_MAX, PadFrame, UNITS_PER_MM};
-use super::{Emitter, OutputError};
+use crate::outputs::pad::{PAD_X_MAX, PAD_Y_MAX, PadFrame, UNITS_PER_MM};
+use crate::outputs::{Emitter, OutputError};
 use crate::config::ForeignOutput;
 use crate::feel::WheelDelta;
 use crate::keys::KeyCombo;
-use crate::sys::{self, AbsInfo, BitSet, InputId, UinputAbsSetup, UinputSetup};
+use super::sys::{self, AbsInfo, BitSet, InputId, UinputAbsSetup, UinputSetup};
 use rustix::fd::OwnedFd;
 use rustix::fs::{Mode, OFlags};
 use std::io;

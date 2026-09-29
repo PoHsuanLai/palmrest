@@ -3,7 +3,7 @@
 use palmrest::compare::compare_curves_from;
 use palmrest::config::{self, Config};
 use palmrest::daemon::{self, latency, record};
-use palmrest::outputs::uinput::{self, PROBE_PERMIT, ProbePermit};
+use palmrest::daemon::uinput::{self, PROBE_PERMIT, ProbePermit};
 use palmrest::recording;
 use palmrest::replay::{Timing, replay_from};
 use palmrest_protocol as protocol;

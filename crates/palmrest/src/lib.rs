@@ -2,7 +2,7 @@
 //!
 //! The pure core (`sensor`, `touch`, `stamp`, `feel`, `gestures`, `tracker`, `action`,
 //! `config`) takes bytes and instants and returns values; `daemon` owns every
-//! thread, socket, device and clock, and `sys` holds the only `unsafe`. The Magic Mouse's own
+//! thread, socket, device and clock, and `daemon::sys` holds the only `unsafe`. The Magic Mouse's own
 //! codec (`decode`, `encode`, `report`) lives in `sensor::magic_mouse`.
 
 pub mod action;
@@ -17,7 +17,6 @@ pub mod recording;
 pub mod replay;
 pub mod sensor;
 pub mod stamp;
-pub mod sys;
 pub mod time;
 pub mod touch;
 pub mod tracker;

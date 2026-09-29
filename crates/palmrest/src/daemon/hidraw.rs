@@ -1,7 +1,7 @@
 //! The mouse's hidraw node: opening it, enabling multitouch, reading one report. `read_up_to`
 //! also serves the evdev node, whose reads are runs of events.
 
-use crate::sys;
+use super::sys;
 use crate::time::Mono;
 use rustix::event::{PollFd, PollFlags, poll};
 use rustix::fd::OwnedFd;

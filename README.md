@@ -47,10 +47,9 @@ sensor's millimetres feel the same per millimetre.
 | `action`, `keys` | the gesture -> action table and what an action means on KDE / COSMIC |
 | `palmrest-protocol` (crate) | the socket messages and their codec (12.3.10) |
 | `config` | `gestures.toml`, lenient per key, the watch |
-| `outputs` | the `Emitter` seam, `RecordingEmitter`, the virtual touchpad model, evdev event encoding, the uinput emitter |
-| `sys` | the ioctls: the only module allowed `unsafe` |
+| `outputs` | the `Emitter` seam, `RecordingEmitter`, the virtual touchpad model, evdev event encoding |
 | `recording`, `replay` | the `palmrest record` file (v1 hidraw, v2 any sensor) and the replay used by every acceptance test |
-| `daemon` | threads, socket, discovery and backoff, the sensor node (hidraw or evdev), devices, record, latency |
+| `daemon` | threads, socket, discovery and backoff, the sensor node (hidraw or evdev), devices, record, latency, the uinput emitter, and `sys`: the ioctls, the only module allowed `unsafe` |
 
 ## Sensors
 
