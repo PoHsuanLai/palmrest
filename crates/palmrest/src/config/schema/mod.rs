@@ -14,6 +14,7 @@ mod tests;
 
 use super::Config;
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 /// The file this schema describes, under `$XDG_CONFIG_HOME`.
 const FILE: &str = "palmrest/gestures.toml";
@@ -77,6 +78,9 @@ pub(super) struct KeySpec {
     pub exposure: Exposure,
     pub kind: Kind,
     page: Page,
+    /// A human label per word of a choice, by stored word; omitted when the key has none.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub labels: BTreeMap<String, String>,
 }
 
 /// The whole schema file.

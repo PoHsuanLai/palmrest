@@ -152,3 +152,28 @@ fn every_key_is_labelled_and_explained() {
         assert!(key.help.ends_with('.'), "{}: help is a sentence", key.path);
     }
 }
+
+#[test]
+fn every_word_of_a_choice_has_a_human_label() {
+    for key in Schema::palmrest().key {
+        let words: Vec<&String> = match &key.kind {
+            Kind::Toggle { variants } => variants.iter().collect(),
+            Kind::Segmented { variants } | Kind::Menu { variants } => variants.iter().collect(),
+            Kind::Bounded { .. } => {
+                assert!(key.labels.is_empty(), "{}", key.path);
+                continue;
+            }
+        };
+        for word in words {
+            let label = key
+                .labels
+                .get(word)
+                .unwrap_or_else(|| panic!("{}: {word}", key.path));
+            assert!(
+                !label.contains('_'),
+                "{}: {label} reads like code",
+                key.path
+            );
+        }
+    }
+}
