@@ -62,6 +62,16 @@ fn arguments_parse_to_commands() {
             &["--print-config"],
             Some(Command::PrintConfig),
         ),
+        (
+            "write schema",
+            &["--write-schema", "d"],
+            Some(Command::WriteSchema { dir: "d".into() }),
+        ),
+        (
+            "write schema without a directory",
+            &["--write-schema"],
+            None,
+        ),
         ("version", &["--version"], Some(Command::Version)),
         ("an unknown verb", &["frobnicate"], None),
     ];

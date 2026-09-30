@@ -4,6 +4,7 @@
 mod probe;
 mod record;
 mod replay;
+mod schema;
 
 #[cfg(test)]
 mod tests;
@@ -25,7 +26,9 @@ const USAGE: &str = "usage:
                                    cumulative px and peak gain under both curves
   palmrest --check-uinput          can this user create virtual devices? (needs
                                    PALMREST_ALLOW_UINPUT_PROBE=1; opens and closes only)
-  palmrest --print-config          print the default gestures.toml";
+  palmrest --print-config          print the default gestures.toml
+  palmrest --write-schema DIR      write palmrest.settings.toml, the schema of gestures.toml,
+                                   into DIR (for the Settings app)";
 
 /// A recording stops after this long when no length is given.
 const DEFAULT_RECORD: Duration = Duration::from_secs(600);
@@ -56,6 +59,9 @@ enum Command {
     },
     CheckUinput,
     PrintConfig,
+    WriteSchema {
+        dir: PathBuf,
+    },
     Version,
 }
 
@@ -82,6 +88,9 @@ fn parse(args: &[&str]) -> Option<Command> {
         }),
         ["--check-uinput"] => Some(Command::CheckUinput),
         ["--print-config"] => Some(Command::PrintConfig),
+        ["--write-schema", dir] => Some(Command::WriteSchema {
+            dir: PathBuf::from(dir),
+        }),
         ["--version"] => Some(Command::Version),
         _ => None,
     }
@@ -131,6 +140,7 @@ fn execute(command: Command, env: &Env) -> Result<(), String> {
             print!("{}", config::to_toml(&Config::default()));
             Ok(())
         }
+        Command::WriteSchema { dir } => schema::write_schema(&dir),
         Command::Version => {
             println!("palmrest {}", env!("CARGO_PKG_VERSION"));
             Ok(())

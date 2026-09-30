@@ -150,7 +150,7 @@ The `rm` repeats what `uninstall.sh` does, in case it was already removed. Then
 ## Configuration
 
 `$XDG_CONFIG_HOME/palmrest/gestures.toml`. Every key of 22-SETTINGS §3.9/§3.10 with its
-default; `palmrest --print-config` prints them all. Lengths are micrometres (`_um`); a rule
+default; `palmrest --print-config` prints them all, and `palmrest --write-schema DIR` writes `palmrest.settings.toml`, the schema the Settings app reads. Lengths are micrometres (`_um`); a rule
 that is anisotropic in millimetres on the mouse (a Euclidean distance, the lock threshold) has
 an `_x_um` / `_y_um` pair. A bad value costs only its own key (logged, default used); an
 unknown key is ignored. A change is re-read 30 ms after the last write and applied at the

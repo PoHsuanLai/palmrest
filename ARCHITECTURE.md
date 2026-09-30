@@ -93,6 +93,7 @@ decision vs lock parameters, contact tracking vs palm turn, one file per scenari
 | Every tunable value, default, range | `config::sections` |
 | Lenient per-key reading | `config::lenient` |
 | Config file location, reload | `config::{load, watch}` |
+| The schema of the config for the Settings app (`palmrest --write-schema`) | `config::schema` (table in `keys.rs`), `command::schema` |
 | Virtual device write seam | `outputs::Emitter` |
 | Touchpad frame model, evdev event encoding | `outputs::{pad, events}` |
 | Recording file format | `recording` |
@@ -176,8 +177,18 @@ environment (`daemon::Env`); it is a plain struct until a fake exists.
    `feel`), never from a global.
 4. `palmrest --print-config` prints it automatically; `README.md` "Configuration" gains a line
    only for a key with a non-obvious unit.
-5. Tests: the round-trip in `config/file.rs` tests, and a case in the lenient-reading table
+5. `config/schema/keys.rs`: one row (label, help, section, Basic or Advanced, its range or
+   words). The default comes from `Config::default()`; a test fails until every key has a row,
+   and reads each row's bounds and words back through the lenient reader.
+6. Tests: the round-trip in `config/file.rs` tests, and a case in the lenient-reading table
    (a bad value keeps the default and yields one `Warning`).
+
+### The schema and quire
+
+`palmrest --write-schema DIR` writes `palmrest.settings.toml`, the file quire's Settings app
+reads (quire `design/22-SETTINGS.md` section 9). palmrest takes no quire crate, so it does not use
+quire's `SettingsSchema` derive: `config::schema` writes the same format from a table, with the
+tests above as the guard that it cannot drift from `Config`.
 
 ### Add a reference-feel golden
 
