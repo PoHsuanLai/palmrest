@@ -109,14 +109,14 @@ mod tests {
     use crate::config::units::{Fraction, Ms, Um};
 
     #[test]
-    fn empty_file_is_all_defaults() {
-        assert_eq!(parse(""), Ok((Config::default(), vec![])));
-    }
-
-    #[test]
-    fn defaults_round_trip_through_toml() {
+    fn an_empty_file_and_the_printed_defaults_are_all_defaults() {
+        assert_eq!(parse(""), Ok((Config::default(), vec![])), "empty file");
         let text = to_toml(&Config::default());
-        assert_eq!(parse(&text), Ok((Config::default(), vec![])), "{text}");
+        assert_eq!(
+            parse(&text),
+            Ok((Config::default(), vec![])),
+            "defaults round trip through toml: {text}"
+        );
     }
 
     #[test]

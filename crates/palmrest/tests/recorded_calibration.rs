@@ -39,16 +39,14 @@ fn wheel_units(name: &str, rejection: Rejection, skip_ms: u64) -> (i64, i64) {
 }
 
 #[test]
-fn default_rejection_keeps_recorded_scrolling() {
+fn default_rejection_keeps_recorded_scrolling_and_drops_a_resting_hand() {
+    // Step 1: the recorded scroll survives rejection.
     let (off, _) = wheel_units("recorded_scroll", Rejection::Off, 0);
     let (on, _) = wheel_units("recorded_scroll", Rejection::On, 0);
     assert!(off > 10_000, "the recording scrolls: {off}");
     assert!(on * 100 >= off * 95, "rejection keeps {on} of {off} units");
-}
 
-#[test]
-fn default_rejection_drops_a_resting_hand() {
-    // The first second is the tail of a scroll, not rest.
+    // Step 2: a resting hand is dropped. The first second is the tail of a scroll, not rest.
     let (_, off) = wheel_units("recorded_rest", Rejection::Off, 1000);
     let (_, on) = wheel_units("recorded_rest", Rejection::On, 1000);
     assert!(

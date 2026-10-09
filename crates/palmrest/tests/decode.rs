@@ -50,36 +50,31 @@ fn header(touches: Vec<RawTouch>) -> Report {
 }
 
 #[test]
-fn goldens_decode_to_exact_fields() {
-    let cases: Vec<(&str, Vec<Report>)> = vec![
-        ("decode_n0", vec![header(vec![])]),
-        ("decode_n1", vec![header(vec![A])]),
-        ("decode_n2", vec![header(vec![A, B])]),
-        ("decode_n3", vec![header(vec![A, B, C])]),
+fn goldens_decode_to_exact_fields_or_errors() {
+    let cases: Vec<(&str, Result<Vec<Report>, DecodeError>)> = vec![
+        ("decode_n0", Ok(vec![header(vec![])])),
+        ("decode_n1", Ok(vec![header(vec![A])])),
+        ("decode_n2", Ok(vec![header(vec![A, B])])),
+        ("decode_n3", Ok(vec![header(vec![A, B, C])])),
         (
             "decode_header_only",
-            vec![Report {
+            Ok(vec![Report {
                 buttons: Buttons::RIGHT,
                 motion: Motion { dx: -1, dy: 1 },
                 stamp: Stamp::Absent,
                 touches: vec![],
-            }],
+            }]),
         ),
-        ("decode_double", vec![header(vec![A]), header(vec![A, B])]),
+        (
+            "decode_double",
+            Ok(vec![header(vec![A]), header(vec![A, B])]),
+        ),
+        ("decode_len13", Err(DecodeError::Length { len: 13 })),
+        ("decode_len15", Err(DecodeError::Length { len: 15 })),
+        ("decode_len29", Err(DecodeError::Length { len: 29 })),
     ];
     for (name, want) in cases {
-        assert_eq!(one(name), Ok(want), "{name}");
-    }
-}
-
-#[test]
-fn bad_lengths_are_rejected() {
-    for (name, len) in [
-        ("decode_len13", 13),
-        ("decode_len15", 15),
-        ("decode_len29", 29),
-    ] {
-        assert_eq!(one(name), Err(DecodeError::Length { len }), "{name}");
+        assert_eq!(one(name), want, "{name}");
     }
 }
 

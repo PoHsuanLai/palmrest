@@ -142,7 +142,7 @@ fn the_file_is_toml_with_one_key_table_per_row() {
 }
 
 #[test]
-fn every_key_is_labelled_and_explained() {
+fn every_key_is_labelled_and_explained_and_every_choice_word_has_a_human_label() {
     for key in Schema::palmrest().key {
         assert!(
             !key.label.is_empty() && !key.section.is_empty(),
@@ -150,12 +150,6 @@ fn every_key_is_labelled_and_explained() {
             key.path
         );
         assert!(key.help.ends_with('.'), "{}: help is a sentence", key.path);
-    }
-}
-
-#[test]
-fn every_word_of_a_choice_has_a_human_label() {
-    for key in Schema::palmrest().key {
         let words: Vec<&String> = match &key.kind {
             Kind::Toggle { variants } => variants.iter().collect(),
             Kind::Segmented { variants } | Kind::Menu { variants } => variants.iter().collect(),

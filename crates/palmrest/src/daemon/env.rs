@@ -39,32 +39,57 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn reads_each_variable_from_the_lookup() {
-        let env = Env::from_lookup(|k| {
-            match k {
-                "HOME" => Some("/home/u"),
-                "XDG_RUNTIME_DIR" => Some("/run/user/1"),
-                "XDG_CURRENT_DESKTOP" => Some("KDE"),
-                PROBE_PERMIT => Some("1"),
-                _ => None,
-            }
-            .map(str::to_owned)
-        });
-        assert_eq!(
-            env.config_dir.as_deref(),
-            Some(Path::new("/home/u/.config/palmrest"))
+    fn lookup_table() {
+        // (name, variables set, config dir, runtime dir, desktop, probe permit)
+        type Case = (
+            &'static str,
+            &'static [(&'static str, &'static str)],
+            Option<&'static str>,
+            Option<&'static str>,
+            Desktop,
+            ProbePermit,
         );
-        assert_eq!(env.runtime_dir.as_deref(), Some(Path::new("/run/user/1")));
-        assert_eq!(env.desktop, Desktop::Kde);
-        assert_eq!(env.probe, ProbePermit::Granted);
-    }
-
-    #[test]
-    fn an_empty_environment_has_no_directories() {
-        let env = Env::from_lookup(|k| (k == "XDG_RUNTIME_DIR").then(String::new));
-        assert_eq!(env.config_dir, None);
-        assert_eq!(env.runtime_dir, None);
-        assert_eq!(env.desktop, Desktop::Other);
-        assert_eq!(env.probe, ProbePermit::Refused);
+        const CASES: &[Case] = &[
+            (
+                "every variable read from the lookup",
+                &[
+                    ("HOME", "/home/u"),
+                    ("XDG_RUNTIME_DIR", "/run/user/1"),
+                    ("XDG_CURRENT_DESKTOP", "KDE"),
+                    (PROBE_PERMIT, "1"),
+                ],
+                Some("/home/u/.config/palmrest"),
+                Some("/run/user/1"),
+                Desktop::Kde,
+                ProbePermit::Granted,
+            ),
+            (
+                "an empty environment has no directories",
+                &[("XDG_RUNTIME_DIR", "")],
+                None,
+                None,
+                Desktop::Other,
+                ProbePermit::Refused,
+            ),
+        ];
+        for &(name, vars, config_dir, runtime_dir, desktop, probe) in CASES {
+            let env = Env::from_lookup(|k| {
+                vars.iter()
+                    .find(|(var, _)| *var == k)
+                    .map(|(_, v)| (*v).to_owned())
+            });
+            assert_eq!(
+                env.config_dir.as_deref(),
+                config_dir.map(Path::new),
+                "{name}"
+            );
+            assert_eq!(
+                env.runtime_dir.as_deref(),
+                runtime_dir.map(Path::new),
+                "{name}"
+            );
+            assert_eq!(env.desktop, desktop, "{name}");
+            assert_eq!(env.probe, probe, "{name}");
+        }
     }
 }

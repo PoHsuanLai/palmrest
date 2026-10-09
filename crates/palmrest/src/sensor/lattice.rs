@@ -125,21 +125,48 @@ mod tests {
     }
 
     #[test]
-    fn a_circle_is_the_old_euclidean_rule() {
-        let e = Ellipse { x: 30, y: 30 };
-        for (dx, dy) in [(18, 24), (30, 0), (0, -30), (21, 21), (29, 1), (17, 24)] {
+    fn reach_and_containment_table() {
+        // (name, ellipse half-axes, offset, reached, contained when the row says so)
+        type Case = (&'static str, (i32, i32), (i32, i32), bool, Option<bool>);
+        const CASES: &[Case] = &[
+            // A circle is the old Euclidean rule.
+            (
+                "circle 18,24 on the rim",
+                (30, 30),
+                (18, 24),
+                true,
+                Some(true),
+            ),
+            (
+                "circle 30,0 on the rim",
+                (30, 30),
+                (30, 0),
+                true,
+                Some(true),
+            ),
+            (
+                "circle 0,-30 on the rim",
+                (30, 30),
+                (0, -30),
+                true,
+                Some(true),
+            ),
+            ("circle 21,21 inside", (30, 30), (21, 21), false, Some(true)),
+            ("circle 29,1 inside", (30, 30), (29, 1), false, Some(true)),
+            ("circle 17,24 inside", (30, 30), (17, 24), false, Some(true)),
+            // An ellipse stretches the short axis.
+            ("ellipse x on the rim", (60, 30), (60, 0), true, None),
+            ("ellipse x just short", (60, 30), (59, 0), false, None),
+            ("ellipse y on the rim", (60, 30), (0, 30), true, None),
+            ("ellipse y just short", (60, 30), (0, 29), false, None),
+        ];
+        for &(name, (x, y), (dx, dy), reached, contained) in CASES {
+            let e = Ellipse { x, y };
             let d = Point::new(dx, dy);
-            assert_eq!(e.reached(d), d.length() >= 30.0, "({dx}, {dy})");
-            assert_eq!(e.contains(d), d.length() <= 30.0, "({dx}, {dy})");
+            assert_eq!(e.reached(d), reached, "{name}: reached");
+            if let Some(contained) = contained {
+                assert_eq!(e.contains(d), contained, "{name}: contained");
+            }
         }
-    }
-
-    #[test]
-    fn an_ellipse_stretches_the_short_axis() {
-        let e = Ellipse { x: 60, y: 30 };
-        assert!(e.reached(Point::new(60, 0)));
-        assert!(!e.reached(Point::new(59, 0)));
-        assert!(e.reached(Point::new(0, 30)));
-        assert!(!e.reached(Point::new(0, 29)));
     }
 }

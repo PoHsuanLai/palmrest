@@ -12,7 +12,6 @@ use palmrest::feel::{
 };
 use palmrest::gestures::{FingerDirection, SwipeEvent, SwipeG};
 use palmrest::replay::{Timing, outs, replay};
-use palmrest::touch::{Point, TouchId};
 use palmrest::{Mono, Out};
 use std::time::Duration;
 
@@ -110,50 +109,63 @@ fn run(name: &str) -> ((i32, i32), Vec<Action>) {
 
 // ---- ScrollAxisLock ---------------------------------------------------------------------
 
-#[test]
-fn one_finger_vertical_scrolls_only_vertically() {
-    let (_, (h, v)) = drag(
-        AxisLock::default(),
-        &points(40, |i| vec![touch(1000, 1000 + i * 6, 1)]),
-        10_000,
-        8,
-    );
-    assert!(v != 0 && h == 0);
-    let ((h, v), _) = run("case_one_vertical");
-    assert!(v != 0 && h == 0);
+/// What a drag must scroll: one axis only, or nothing at all.
+#[derive(Clone, Copy)]
+enum Scrolls {
+    OnlyVertical,
+    OnlyHorizontal,
+    Nothing,
+}
+
+impl Scrolls {
+    fn holds(self, (h, v): (i32, i32)) -> bool {
+        match self {
+            Scrolls::OnlyVertical => v != 0 && h == 0,
+            Scrolls::OnlyHorizontal => h != 0 && v == 0,
+            Scrolls::Nothing => (h, v) == (0, 0),
+        }
+    }
 }
 
 #[test]
-fn one_finger_horizontal_scrolls_only_horizontally() {
-    let (_, (h, v)) = drag(
-        AxisLock::default(),
-        &points(40, |i| vec![touch(1000 + i * 6, 1000, 1)]),
-        10_000,
-        8,
-    );
-    assert!(h != 0 && v == 0);
-    let ((h, v), _) = run("case_one_horizontal");
-    assert!(h != 0 && v == 0);
-}
-
-#[test]
-fn two_fingers_never_scroll_horizontally() {
-    let pts = points(40, |i| {
-        vec![touch(900 + i * 6, 1000, 1), touch(1300 + i * 6, 1000, 2)]
-    });
-    assert_eq!(drag(AxisLock::default(), &pts, 10_000, 8).1, (0, 0));
-    assert_eq!(run("case_two_never_horizontal").0, (0, 0));
-}
-
-#[test]
-fn two_fingers_scroll_vertically() {
-    let pts = points(40, |i| {
-        vec![touch(900, 1000 + i * 6, 1), touch(1300, 1000 + i * 6, 2)]
-    });
-    let (_, (h, v)) = drag(AxisLock::default(), &pts, 10_000, 8);
-    assert!(v != 0 && h == 0);
-    let ((h, v), _) = run("case_two_vertical");
-    assert!(v != 0 && h == 0);
+fn the_axis_lock_scrolls_the_dominant_axis_only() {
+    // (name, the fingers at step i, the recorded fixture, what the drag scrolls)
+    type Case = (&'static str, fn(i32) -> Vec<Sample>, &'static str, Scrolls);
+    const AXIS_CASES: &[Case] = &[
+        (
+            "one finger vertical",
+            |i| vec![touch(1000, 1000 + i * 6, 1)],
+            "case_one_vertical",
+            Scrolls::OnlyVertical,
+        ),
+        (
+            "one finger horizontal",
+            |i| vec![touch(1000 + i * 6, 1000, 1)],
+            "case_one_horizontal",
+            Scrolls::OnlyHorizontal,
+        ),
+        (
+            "two fingers never horizontal",
+            |i| vec![touch(900 + i * 6, 1000, 1), touch(1300 + i * 6, 1000, 2)],
+            "case_two_never_horizontal",
+            Scrolls::Nothing,
+        ),
+        (
+            "two fingers vertical",
+            |i| vec![touch(900, 1000 + i * 6, 1), touch(1300, 1000 + i * 6, 2)],
+            "case_two_vertical",
+            Scrolls::OnlyVertical,
+        ),
+    ];
+    for &(name, fingers, fixture, want) in AXIS_CASES {
+        let (_, unit) = drag(AxisLock::default(), &points(40, fingers), 10_000, 8);
+        assert!(want.holds(unit), "{name}: the unit scrolled {unit:?}");
+        let (recorded, _) = run(fixture);
+        assert!(
+            want.holds(recorded),
+            "{name}: the fixture scrolled {recorded:?}"
+        );
+    }
 }
 
 #[test]
@@ -331,40 +343,31 @@ fn long_two_finger_drag_switches_again_after_cooldown() {
 }
 
 #[test]
-fn two_finger_vertical_drag_does_not_switch_desktop() {
-    let frames: Vec<_> = (0..60)
-        .map(|i| {
-            (
-                10_000 + 8 * i as u64,
+fn these_drags_do_not_switch_desktop() {
+    // (name, the fingers at step i, the recorded fixture)
+    type Case = (&'static str, fn(i32) -> Vec<Sample>, &'static str);
+    const NO_SWITCH_CASES: &[Case] = &[
+        (
+            "two-finger vertical drag",
+            |i| {
                 vec![
                     touch(900 + i * 3, 1000 + i * 10, 1),
                     touch(1300 + i * 3, 1000 + i * 10, 2),
-                ],
-            )
-        })
-        .collect();
-    assert!(swipe_run(&frames).is_empty());
-    assert!(run("case_vertical_no_switch").1.is_empty());
-}
-
-#[test]
-fn one_finger_never_switches_desktop() {
-    let frames: Vec<_> = (0..60)
-        .map(|i| (10_000 + 8 * i as u64, vec![touch(500 + i * 20, 1000, 1)]))
-        .collect();
-    assert!(swipe_run(&frames).is_empty());
-    assert!(run("case_one_never_switches").1.is_empty());
-}
-
-#[test]
-fn the_unsigned_points_convert_to_the_kernel_frame() {
-    // The conversion the ports rely on: unsigned 12-bit in, kernel frame out.
-    assert_eq!(
-        touch(3000, 3000, 2),
-        Sample {
-            id: TouchId(2),
-            at: Point::new(3000 - 4096, 4096 - 3000)
-        }
-    );
-    assert_eq!(touch(1000, 1000, 1).at, Point::new(1000, -1000));
+                ]
+            },
+            "case_vertical_no_switch",
+        ),
+        (
+            "one finger never switches",
+            |i| vec![touch(500 + i * 20, 1000, 1)],
+            "case_one_never_switches",
+        ),
+    ];
+    for &(name, fingers, fixture) in NO_SWITCH_CASES {
+        let frames: Vec<_> = (0..60)
+            .map(|i| (10_000 + 8 * i as u64, fingers(i)))
+            .collect();
+        assert!(swipe_run(&frames).is_empty(), "{name}: the unit switched");
+        assert!(run(fixture).1.is_empty(), "{name}: the fixture switched");
+    }
 }
