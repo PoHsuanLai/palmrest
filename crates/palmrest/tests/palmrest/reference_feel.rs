@@ -11,8 +11,6 @@
 //! has nothing to throw away, so over a whole session the two drift apart by up to one unit per
 //! stroke even though every stroke agrees.
 
-mod support;
-
 use palmrest::Out;
 use palmrest::config::{Config, ForeignOutput, Rejection};
 use palmrest::feel::Lock;
@@ -75,7 +73,11 @@ fn reference_config() -> Config {
 #[test]
 fn lock_decisions_and_wheel_units_match_the_reference_per_report() {
     for name in SESSIONS {
-        let steps = replay(&support::load(name), reference_config(), Timing::Arrival);
+        let steps = replay(
+            &crate::support::load(name),
+            reference_config(),
+            Timing::Arrival,
+        );
         let py = golden(name);
         assert_eq!(steps.len(), py.len(), "{name}: record count");
         let (mut ours, mut theirs) = ([0i64; 4], [0i64; 4]);

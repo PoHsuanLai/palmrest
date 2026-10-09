@@ -37,7 +37,7 @@ daemon, `sys` and the CLI verbs are `pub(crate)`; the one public entry to them i
 | `compare.rs` | `replay/compare.rs` |
 | `gestures/live.rs`, the seven `gestures.live_workspace_*` keys | deleted (section 8) |
 | `tests/socket.rs`, `tests/latency.rs` | unit tests beside `daemon/socket.rs` and `daemon/latency.rs` |
-| `tests/acceptance_1_decode.rs`, `acceptance_2_reference_feel.rs`, `acceptance_3_reference_cases.rs`, `acceptance_4_to_7.rs` | `tests/decode.rs`, `tests/reference_feel.rs`, `tests/reference_cases.rs`, `tests/gestures_replay.rs` (named after what they test) |
+| `tests/acceptance_1_decode.rs`, `acceptance_2_reference_feel.rs`, `acceptance_3_reference_cases.rs`, `acceptance_4_to_7.rs` | `tests/decode.rs`, `tests/palmrest/reference_feel.rs`, `tests/palmrest/reference_cases.rs`, `tests/palmrest/gestures_replay.rs` (named after what they test) |
 
 ## 2. Modules and layers
 
@@ -137,7 +137,7 @@ environment (`daemon::Env`); it is a plain struct until a fake exists.
    bump `PROTOCOL_VERSION`, update the round-trip test and shell-host in the same change).
 6. Tests: a table test of the recogniser beside it; a scenario in `tests/support/scenarios.rs`
    (a synthesised stroke), its fixture written by `PALMREST_REGEN_FIXTURES=1 cargo test --test
-   fixtures_current`, and a replay assertion in `tests/gestures_replay.rs`; the same recording
+   fixtures_current`, and a replay assertion in `tests/palmrest/gestures_replay.rs`; the same recording
    replayed through `EvdevMultitouch` in `tests/evdev_parity.rs`.
 
 ### Add a sensor
@@ -203,7 +203,7 @@ re-blessing the golden.
 2. Its `.bin` fixture: `PALMREST_REGEN_FIXTURES=1 cargo test --test fixtures_current` (synthesised
    fixtures only, never a golden).
 3. The golden file in `tests/fixtures/reference/`, from the user-approved source of truth.
-4. A row in `tests/reference_feel.rs` (`SESSIONS`) or `tests/reference_cases.rs`.
+4. A row in `tests/palmrest/reference_feel.rs` (`SESSIONS`) or `tests/palmrest/reference_cases.rs`.
 
 ## 6. Test harness
 

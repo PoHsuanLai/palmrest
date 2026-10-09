@@ -7,15 +7,13 @@
 //! 223 major units and resting contacts 70 to 196, so size cannot tell them apart and only
 //! motion does (P2 and the axis lock).
 
-mod support;
-
 use palmrest::Out;
 use palmrest::config::{Config, ForeignOutput, Rejection};
 use palmrest::replay::{Timing, replay};
 
 /// Summed hi-res wheel units, all of them and those after `skip_ms` from the first record.
 fn wheel_units(name: &str, rejection: Rejection, skip_ms: u64) -> (i64, i64) {
-    let records = support::load(name);
+    let records = crate::support::load(name);
     let start = records.first().map_or(0, |r| r.at.0);
     let cfg = Config {
         rejection,

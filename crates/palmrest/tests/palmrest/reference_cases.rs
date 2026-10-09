@@ -3,8 +3,6 @@
 //! of the committed fixture with the same points. The cases and their expected values are
 //! frozen from the retired Python daemon's test suite; points are in its unsigned reading.
 
-mod support;
-
 use palmrest::action::{Action, Desktop, Effect, plan};
 use palmrest::config::{Config, Count, ForeignOutput, Fraction, Rejection};
 use palmrest::feel::{
@@ -19,7 +17,7 @@ use std::time::Duration;
 
 /// `touch(x, y, id)` in the unsigned reading, as a lock sample in the kernel frame.
 fn touch(x: i32, y: i32, id: u8) -> Sample {
-    let t = support::unsigned_finger(id, x, y);
+    let t = crate::support::unsigned_finger(id, x, y);
     Sample { id: t.id, at: t.at }
 }
 
@@ -86,7 +84,7 @@ fn reference_config() -> Config {
 /// The wheel hi-res totals (h, v) and the workspace actions of a fixture.
 fn run(name: &str) -> ((i32, i32), Vec<Action>) {
     let all = outs(&replay(
-        &support::load(name),
+        &crate::support::load(name),
         reference_config(),
         Timing::Arrival,
     ));
@@ -177,12 +175,12 @@ fn three_fingers_do_nothing() {
     });
     assert_eq!(drag(AxisLock::default(), &pts, 10_000, 8).1, (0, 0));
     let all = outs(&replay(
-        &support::load("case_three_nothing"),
+        &crate::support::load("case_three_nothing"),
         reference_config(),
         Timing::Arrival,
     ));
     assert!(
-        support::scrolls(&all).is_empty(),
+        crate::support::scrolls(&all).is_empty(),
         "no scroll phases at all: {all:?}"
     );
     assert!(!all.iter().any(|o| matches!(o, Out::Wheel(_) | Out::Pad(_))));
@@ -205,14 +203,14 @@ fn finger_count_change_does_not_jump() {
     assert_eq!(hi_res(&ev), (0, 0));
     // End to end: nothing is emitted at the report where the second finger lands.
     let steps = replay(
-        &support::load("case_count_change"),
+        &crate::support::load("case_count_change"),
         reference_config(),
         Timing::Arrival,
     );
     let last = steps.last().unwrap();
     assert!(!last.outs.iter().any(|o| matches!(o, Out::Wheel(_))));
     assert!(
-        support::scrolls(&last.outs)
+        crate::support::scrolls(&last.outs)
             .iter()
             .all(|s| s.3 == 0.0 && s.4 == 0.0)
     );
@@ -246,7 +244,7 @@ fn scroll_steps_are_finer_than_a_detent_tenth() {
     assert!(emitted.iter().any(|v| v.abs() % 12 != 0));
     // End to end, the wheel and the socket both step finer than a tenth of a detent.
     let all = outs(&replay(
-        &support::load("case_fine_steps"),
+        &crate::support::load("case_fine_steps"),
         reference_config(),
         Timing::Arrival,
     ));
@@ -261,7 +259,7 @@ fn scroll_steps_are_finer_than_a_detent_tenth() {
         })
         .collect();
     assert!(wheel.iter().any(|v| v.abs() % 12 != 0));
-    let px: Vec<f32> = support::scrolls(&all)
+    let px: Vec<f32> = crate::support::scrolls(&all)
         .iter()
         .map(|s| s.4)
         .filter(|v| *v != 0.0)

@@ -6,8 +6,6 @@
 //! Synthetic: the kernel is modelled as reporting only touches in MakeTouch or Touching, and
 //! its fuzz filter is not modelled.
 
-mod support;
-
 use palmrest::Config;
 use palmrest::Mono;
 use palmrest::outputs::events::{
@@ -125,7 +123,7 @@ const SHAPE_DEPENDENT: &[&str] = &["palm_during_scroll", "recorded_rest", "recor
 
 #[test]
 fn every_fixture_replays_the_same_through_evdev() {
-    let dir = support::fixture_path("x");
+    let dir = crate::support::fixture_path("x");
     let mut names: Vec<String> = std::fs::read_dir(dir.parent().unwrap())
         .unwrap()
         .filter_map(|e| {
@@ -138,7 +136,7 @@ fn every_fixture_replays_the_same_through_evdev() {
     let mut differ = Vec::new();
     let mut compared = 0;
     for name in &names {
-        let hid = support::load(name);
+        let hid = crate::support::load(name);
         let cfg = Config::default();
         let (_, a) = replay_from(
             &RecordedSource::MagicMouseHid,

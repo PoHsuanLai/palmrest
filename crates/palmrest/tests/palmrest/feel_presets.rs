@@ -1,8 +1,6 @@
 //! The two opt-in feel presets, end to end through replay and the `RecordingEmitter`:
 //! `feel.curve = "mac_like"` and `foreign_momentum = "ours"`.
 
-mod support;
-
 use palmrest::config::{Config, Curve, ForeignMomentum, ForeignOutput};
 use palmrest::feel::{Drag, ReleaseRule, ReleaseSamples};
 use palmrest::outputs::pad::{CENTRE, PadFrame};
@@ -102,7 +100,11 @@ fn pad_travel_px(frames: &[Written], from: Mono, cfg: &Config) -> f64 {
 #[test]
 fn with_toolkit_momentum_the_pad_lifts_at_ended() {
     let cfg = Config::default();
-    let steps = replay(&support::load("flick_two_vertical"), cfg, Timing::Arrival);
+    let steps = replay(
+        &crate::support::load("flick_two_vertical"),
+        cfg,
+        Timing::Arrival,
+    );
     let (frames, ended) = written(&steps);
     let after: Vec<&Written> = frames.iter().filter(|w| w.at >= ended).collect();
     assert_eq!(after.len(), 1, "one frame after Ended");
@@ -113,7 +115,7 @@ fn with_toolkit_momentum_the_pad_lifts_at_ended() {
 fn ours_glides_the_contacts_along_the_drag_curve_then_lifts() {
     let cfg = ours(ForeignOutput::Touchpad);
     let steps = replay(
-        &support::load("flick_two_vertical"),
+        &crate::support::load("flick_two_vertical"),
         cfg.clone(),
         Timing::Arrival,
     );
@@ -159,7 +161,11 @@ fn ours_glides_the_contacts_along_the_drag_curve_then_lifts() {
 #[test]
 fn near_the_edge_the_glide_relands_with_no_pause() {
     let cfg = ours(ForeignOutput::Touchpad);
-    let steps = replay(&support::load("flick_two_vertical"), cfg, Timing::Arrival);
+    let steps = replay(
+        &crate::support::load("flick_two_vertical"),
+        cfg,
+        Timing::Arrival,
+    );
     let (frames, ended) = written(&steps);
     let glide: Vec<&Written> = frames.iter().filter(|w| w.at > ended).collect();
     let lifts: Vec<usize> = (0..glide.len())
@@ -182,7 +188,7 @@ fn near_the_edge_the_glide_relands_with_no_pause() {
 #[test]
 fn a_new_touch_stops_the_glide_at_once() {
     let cfg = ours(ForeignOutput::Touchpad);
-    let records = support::load("flick_then_touch");
+    let records = crate::support::load("flick_then_touch");
     let touch = Mono::from_millis(400);
     let steps = replay(&records, cfg.clone(), Timing::Arrival);
     let (frames, ended) = written(&steps);
@@ -205,7 +211,7 @@ fn a_new_touch_stops_the_glide_at_once() {
 #[test]
 fn a_claim_stops_the_glide_and_a_claimed_flick_never_glides() {
     let cfg = ours(ForeignOutput::Touchpad);
-    let records = support::load("flick_two_vertical");
+    let records = crate::support::load("flick_two_vertical");
     let (mut t, mut clock) = (Tracker::new(cfg.clone()), StampClock::new());
     for r in &records {
         let (nt, nc, _) = feed(t, clock, r, Timing::Arrival);
@@ -238,7 +244,7 @@ fn on_the_wheel_the_glide_is_a_decaying_run_of_hi_res_frames() {
         foreign_output: ForeignOutput::Wheel,
         ..Config::default()
     };
-    let records = support::load("flick_two_vertical");
+    let records = crate::support::load("flick_two_vertical");
     let (frames, ended) = written(&replay(&records, toolkit, Timing::Arrival));
     assert!(
         frames.iter().all(|w| w.at <= ended),
@@ -278,7 +284,7 @@ fn on_the_wheel_the_glide_is_a_decaying_run_of_hi_res_frames() {
 #[test]
 fn mac_like_is_precise_slow_and_faster_on_a_flick() {
     let cfg = Config::default();
-    let slow = compare_curves(&support::load("feel_slow"), &cfg, Timing::Arrival);
+    let slow = compare_curves(&crate::support::load("feel_slow"), &cfg, Timing::Arrival);
     assert_eq!(slow.mac_like.peak_gain, 1.0, "slow motion is 1:1");
     assert!(slow.classic.peak_gain > 1.0);
     assert!(slow.mac_like.cumulative_px < slow.classic.cumulative_px);
@@ -287,7 +293,11 @@ fn mac_like_is_precise_slow_and_faster_on_a_flick() {
         "the lock is the same"
     );
 
-    let flick = compare_curves(&support::load("flick_two_vertical"), &cfg, Timing::Arrival);
+    let flick = compare_curves(
+        &crate::support::load("flick_two_vertical"),
+        &cfg,
+        Timing::Arrival,
+    );
     assert!(flick.mac_like.peak_gain > 3.0, "{:?}", flick.mac_like);
     assert!(
         (flick.classic.peak_gain - 2.0).abs() < 1e-9,
@@ -306,7 +316,7 @@ fn the_default_curve_is_the_reference_feel() {
     explicit.feel.curve = Curve::Classic;
     explicit.foreign_momentum = ForeignMomentum::Toolkit;
     for name in ["feel_fast", "feel_flicks", "flick_two_vertical"] {
-        let records = support::load(name);
+        let records = crate::support::load(name);
         assert_eq!(
             replay(&records, Config::default(), Timing::Arrival),
             replay(&records, explicit.clone(), Timing::Arrival),

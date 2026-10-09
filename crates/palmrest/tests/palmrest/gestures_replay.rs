@@ -2,8 +2,6 @@
 //! (rejection on, touchpad output): swipe trigger, double-taps, one-finger swipe, rejection,
 //! suppression.
 
-mod support;
-
 use palmrest::action::Action;
 use palmrest::config::{Config, Rejection};
 use palmrest::keys::{Key, KeyCombo};
@@ -15,7 +13,7 @@ use palmrest_protocol::{Axis, Over, Phase, TapKind, ToHost};
 
 fn run(name: &str) -> Vec<Out> {
     outs(&replay(
-        &support::load(name),
+        &crate::support::load(name),
         Config::default(),
         Timing::Arrival,
     ))
@@ -26,7 +24,7 @@ fn run_claimed(name: &str) -> Vec<Out> {
     let (mut t, _) = Tracker::new(Config::default()).claim(Over::Ours);
     let mut clock = StampClock::new();
     let mut all = Vec::new();
-    for r in &support::load(name) {
+    for r in &crate::support::load(name) {
         let (nt, nc, step) = feed(t, clock, r, Timing::Arrival);
         t = nt;
         clock = nc;
@@ -60,7 +58,7 @@ fn keys(outs: &[Out]) -> Vec<KeyCombo> {
 }
 
 fn taps(outs: &[Out]) -> Vec<TapKind> {
-    support::host(outs)
+    crate::support::host(outs)
         .into_iter()
         .filter_map(|h| {
             if let ToHost::Tap { kind, .. } = h {
@@ -91,7 +89,7 @@ fn swipe_trigger() {
 #[test]
 fn vertical_then_horizontal_fires_only_after_the_further_200() {
     let steps = replay(
-        &support::load("swipe_vertical_then_horizontal"),
+        &crate::support::load("swipe_vertical_then_horizontal"),
         Config::default(),
         Timing::Arrival,
     );
@@ -108,7 +106,11 @@ fn vertical_then_horizontal_fires_only_after_the_further_200() {
 #[test]
 fn a_two_finger_swipe_never_scrolls_sideways() {
     let all = run("swipe_600_fast");
-    assert!(support::scrolls(&all).iter().all(|s| s.2 != Some(Axis::X)));
+    assert!(
+        crate::support::scrolls(&all)
+            .iter()
+            .all(|s| s.2 != Some(Axis::X))
+    );
     assert!(
         !all.iter().any(|o| matches!(o, Out::Pad(_))),
         "Blocked contacts never reach the touchpad"
@@ -145,7 +147,7 @@ fn taps_never_scroll() {
     for name in ["tap_two_double", "tap_one_double"] {
         let all = run(name);
         assert!(
-            support::scrolls(&all)
+            crate::support::scrolls(&all)
                 .iter()
                 .all(|s| matches!(s.0, Phase::MayBegin | Phase::Ended)),
             "{name}"
@@ -168,12 +170,12 @@ fn one_finger_swipe() {
         "fingers moved right: Back"
     );
     assert!(
-        support::scrolled(&fast).0 > 0.0,
+        crate::support::scrolled(&fast).0 > 0.0,
         "the horizontal scroll is still emitted"
     );
     let slow = run("g4_slow");
     assert!(keys(&slow).is_empty());
-    assert!(support::scrolled(&slow).0 > 0.0);
+    assert!(crate::support::scrolled(&slow).0 > 0.0);
     assert!(
         keys(&run_claimed("g4_fast")).is_empty(),
         "no G4 keys while a host holds the pointer"
@@ -184,7 +186,7 @@ fn one_finger_swipe() {
 
 #[test]
 fn a_resting_side_contact_is_ignored_only_with_rejection_on() {
-    let records: Vec<Record> = support::load("rest_side_band");
+    let records: Vec<Record> = crate::support::load("rest_side_band");
     let on = outs(&replay(&records, Config::default(), Timing::Arrival));
     let off = outs(&replay(
         &records,
@@ -194,12 +196,15 @@ fn a_resting_side_contact_is_ignored_only_with_rejection_on() {
         },
         Timing::Arrival,
     ));
-    let fingers = |o: &[Out]| support::scrolls(o).iter().map(|s| s.1).max();
+    let fingers = |o: &[Out]| crate::support::scrolls(o).iter().map(|s| s.1).max();
     assert_eq!(fingers(&on), Some(1));
     assert_eq!(fingers(&off), Some(2));
     // One finger scrolls the whole stroke; two fingers' centroid moves half as far, and
     // locks later.
-    let (on_y, off_y) = (support::scrolled(&on).1, support::scrolled(&off).1);
+    let (on_y, off_y) = (
+        crate::support::scrolled(&on).1,
+        crate::support::scrolled(&off).1,
+    );
     assert!(
         on_y > 1.5 * off_y && off_y > 0.0,
         "on {on_y} px, off {off_y} px"
@@ -209,7 +214,7 @@ fn a_resting_side_contact_is_ignored_only_with_rejection_on() {
 #[test]
 fn a_click_cancels_the_scroll_and_holds_gestures_off() {
     let all = run("click_during_scroll");
-    let phases: Vec<Phase> = support::scrolls(&all).iter().map(|s| s.0).collect();
+    let phases: Vec<Phase> = crate::support::scrolls(&all).iter().map(|s| s.0).collect();
     let cancel = phases
         .iter()
         .position(|p| *p == Phase::Cancelled)
@@ -228,7 +233,7 @@ fn a_click_cancels_the_scroll_and_holds_gestures_off() {
 
 #[test]
 fn a_palm_cancels_the_scroll() {
-    let phases: Vec<Phase> = support::scrolls(&run("palm_during_scroll"))
+    let phases: Vec<Phase> = crate::support::scrolls(&run("palm_during_scroll"))
         .iter()
         .map(|s| s.0)
         .collect();
@@ -240,29 +245,33 @@ fn a_palm_cancels_the_scroll() {
 #[test]
 fn a_moving_mouse_needs_twice_the_travel_to_scroll() {
     assert!(
-        support::scrolls(&run("mouse_moving"))
+        crate::support::scrolls(&run("mouse_moving"))
             .iter()
             .all(|s| s.0 != Phase::Began)
     );
     let off = outs(&replay(
-        &support::load("mouse_moving"),
+        &crate::support::load("mouse_moving"),
         Config {
             rejection: Rejection::Off,
             ..Config::default()
         },
         Timing::Arrival,
     ));
-    assert!(support::scrolls(&off).iter().any(|s| s.0 == Phase::Began));
+    assert!(
+        crate::support::scrolls(&off)
+            .iter()
+            .any(|s| s.0 == Phase::Began)
+    );
 }
 
 // ---- phase bookkeeping, over every fixture ------------------------------------------------
 
 #[test]
 fn every_may_begin_is_closed_exactly_once() {
-    for (name, records) in support::scenarios::all() {
+    for (name, records) in crate::support::scenarios::all() {
         let all = outs(&replay(&records, Config::default(), Timing::Arrival));
         let mut open: Option<palmrest_protocol::GestureId> = None;
-        for h in support::host(&all) {
+        for h in crate::support::host(&all) {
             if let ToHost::Scroll { gesture, phase, .. } = h {
                 match phase {
                     Phase::MayBegin => {
@@ -286,9 +295,9 @@ fn every_may_begin_is_closed_exactly_once() {
 
 #[test]
 fn touches_down_and_up_alternate() {
-    for (name, records) in support::scenarios::all() {
+    for (name, records) in crate::support::scenarios::all() {
         let all = outs(&replay(&records, Config::default(), Timing::Arrival));
-        let t: Vec<_> = support::host(&all)
+        let t: Vec<_> = crate::support::host(&all)
             .into_iter()
             .filter_map(|h| {
                 if let ToHost::Touches { active } = h {
@@ -321,8 +330,8 @@ fn a_claimed_pointer_silences_every_foreign_output() {
             "{name}"
         );
         assert_eq!(
-            support::scrolls(&claimed),
-            support::scrolls(&free),
+            crate::support::scrolls(&claimed),
+            crate::support::scrolls(&free),
             "{name}: the socket stream is unchanged"
         );
     }
@@ -333,22 +342,26 @@ fn a_claimed_pointer_silences_every_foreign_output() {
     };
     let (mut t, _) = Tracker::new(wheel.clone()).claim(Over::Ours);
     let mut all = Vec::new();
-    for r in &support::load("feel_fast") {
+    for r in &crate::support::load("feel_fast") {
         let (nt, _, step) = feed(t, StampClock::new(), r, Timing::Arrival);
         t = nt;
         all.extend(step.outs);
     }
     assert!(!all.iter().any(|o| matches!(o, Out::Wheel(_))));
     assert!(
-        outs(&replay(&support::load("feel_fast"), wheel, Timing::Arrival))
-            .iter()
-            .any(|o| matches!(o, Out::Wheel(_)))
+        outs(&replay(
+            &crate::support::load("feel_fast"),
+            wheel,
+            Timing::Arrival
+        ))
+        .iter()
+        .any(|o| matches!(o, Out::Wheel(_)))
     );
 }
 
 #[test]
 fn claiming_mid_stroke_lifts_the_touchpad() {
-    let records = support::load("g4_slow");
+    let records = crate::support::load("g4_slow");
     let (mut t, mut clock) = (Tracker::new(Config::default()), StampClock::new());
     for r in &records[..31] {
         let (nt, nc, _) = feed(t, clock, r, Timing::Arrival);

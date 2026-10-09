@@ -1,13 +1,11 @@
 //! Acceptance 12.8 item 1: decoder goldens.
 
-mod support;
-
 use palmrest::sensor::magic_mouse::decode::{DecodeError, decode};
 use palmrest::sensor::magic_mouse::report::{Buttons, Motion, Report, Stamp};
 use palmrest::touch::{Point, RawTouch, TouchId, TouchState, wrap_delta};
 
 fn one(name: &str) -> Result<Vec<Report>, DecodeError> {
-    let records = support::load(name);
+    let records = crate::support::load(name);
     assert_eq!(records.len(), 1, "{name}");
     decode(&records[0].bytes)
 }

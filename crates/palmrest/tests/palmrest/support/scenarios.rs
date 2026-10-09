@@ -1,5 +1,5 @@
 //! Every synthesised fixture, by name. The committed `.bin` files are these, byte for byte
-//! (`tests/fixtures_current.rs` checks it; `PALMREST_REGEN_FIXTURES=1` rewrites them).
+//! (`tests/palmrest/fixtures_current.rs` checks it; `PALMREST_REGEN_FIXTURES=1` rewrites them).
 //!
 //! Coordinates are the kernel frame (+x right, +y toward the user) unless a scenario is a
 //! reference case (`case_*`), which states its points in the unsigned reading.
