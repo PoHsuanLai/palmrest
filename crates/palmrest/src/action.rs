@@ -124,9 +124,12 @@ pub fn key_of(a: &Action) -> Option<KeyCombo> {
 
 /// The desktop the daemon runs under, from `XDG_CURRENT_DESKTOP`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum Desktop {
     Kde,
     Cosmic,
+    /// Our desktop (`XDG_CURRENT_DESKTOP=quire`).
+    Quire,
     Other,
 }
 
@@ -136,6 +139,8 @@ impl Desktop {
         let names: Vec<&str> = v.split(':').map(str::trim).collect();
         if names.iter().any(|n| n.eq_ignore_ascii_case("KDE")) {
             Self::Kde
+        } else if names.iter().any(|n| n.eq_ignore_ascii_case("quire")) {
+            Self::Quire
         } else if names.iter().any(|n| n.eq_ignore_ascii_case("COSMIC")) {
             Self::Cosmic
         } else {
@@ -247,6 +252,8 @@ mod tests {
             ("KDE", Desktop::Kde),
             ("ubuntu:KDE", Desktop::Kde),
             ("COSMIC", Desktop::Cosmic),
+            ("quire", Desktop::Quire),
+            ("Quire:COSMIC", Desktop::Quire),
             ("KDEX", Desktop::Other),
             ("GNOME", Desktop::Other),
             ("", Desktop::Other),
@@ -269,6 +276,24 @@ mod tests {
         assert_eq!(
             plan(&Action::WorkspaceNext, Desktop::Cosmic),
             spawn(&["sill", "workspace", "next"])
+        );
+        for (a, want) in [
+            (Action::WorkspacePrev, "prev"),
+            (Action::WorkspaceNext, "next"),
+        ] {
+            assert_eq!(
+                plan(&a, Desktop::Quire),
+                spawn(&["sill", "workspace", want])
+            );
+        }
+        assert_eq!(
+            plan(&Action::WorkspaceOverview, Desktop::Quire),
+            Effect::Nothing,
+            "no overview command is defined for quire yet"
+        );
+        assert_eq!(
+            plan(&Action::Back, Desktop::Quire),
+            Effect::Key(KeyCombo::alt(Key::LEFT))
         );
         assert_eq!(
             plan(&Action::WorkspaceOverview, Desktop::Cosmic),
