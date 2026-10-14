@@ -127,7 +127,6 @@ pub fn key_of(a: &Action) -> Option<KeyCombo> {
 #[non_exhaustive]
 pub enum Desktop {
     Kde,
-    Cosmic,
     /// Our desktop (`XDG_CURRENT_DESKTOP=quire`).
     Quire,
     Other,
@@ -141,8 +140,6 @@ impl Desktop {
             Self::Kde
         } else if names.iter().any(|n| n.eq_ignore_ascii_case("quire")) {
             Self::Quire
-        } else if names.iter().any(|n| n.eq_ignore_ascii_case("COSMIC")) {
-            Self::Cosmic
         } else {
             Self::Other
         }
@@ -168,7 +165,6 @@ pub fn plan(a: &Action, desktop: Desktop) -> Effect {
         (Action::WorkspaceOverview, Desktop::Kde) => kwin("Overview"),
         (Action::WorkspacePrev, _) => spawn(&["sill", "workspace", "prev"]),
         (Action::WorkspaceNext, _) => spawn(&["sill", "workspace", "next"]),
-        (Action::WorkspaceOverview, Desktop::Cosmic) => spawn(&["cosmic-workspaces"]),
         (Action::ShellIpc(s), _) => Effect::Spawn(
             std::iter::once("sill")
                 .chain(s.split_whitespace())
@@ -251,9 +247,8 @@ mod tests {
         const CASES: &[(&str, Desktop)] = &[
             ("KDE", Desktop::Kde),
             ("ubuntu:KDE", Desktop::Kde),
-            ("COSMIC", Desktop::Cosmic),
             ("quire", Desktop::Quire),
-            ("Quire:COSMIC", Desktop::Quire),
+            ("quire:GNOME", Desktop::Quire),
             ("KDEX", Desktop::Other),
             ("GNOME", Desktop::Other),
             ("", Desktop::Other),
@@ -274,7 +269,7 @@ mod tests {
             Effect::Key(KeyCombo::alt(Key::LEFT))
         );
         assert_eq!(
-            plan(&Action::WorkspaceNext, Desktop::Cosmic),
+            plan(&Action::WorkspaceNext, Desktop::Other),
             spawn(&["sill", "workspace", "next"])
         );
         for (a, want) in [
@@ -295,10 +290,6 @@ mod tests {
             plan(&Action::Back, Desktop::Quire),
             Effect::Key(KeyCombo::alt(Key::LEFT))
         );
-        assert_eq!(
-            plan(&Action::WorkspaceOverview, Desktop::Cosmic),
-            spawn(&["cosmic-workspaces"])
-        );
         assert_eq!(plan(&Action::SmartZoom, Desktop::Kde), Effect::Nothing);
         assert_eq!(plan(&Action::None, Desktop::Kde), Effect::Nothing);
         assert_eq!(
@@ -306,7 +297,7 @@ mod tests {
             Effect::Nothing
         );
         assert_eq!(
-            plan(&Action::ShellIpc("dock toggle".into()), Desktop::Cosmic),
+            plan(&Action::ShellIpc("dock toggle".into()), Desktop::Quire),
             spawn(&["sill", "dock", "toggle"])
         );
     }

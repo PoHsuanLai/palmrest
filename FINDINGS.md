@@ -62,7 +62,7 @@ such a touch never counts, so no tap. As specified; tune on the device.
 
 **Not built: live workspace mode.** A synthetic four-contact swipe on the virtual touchpad so
 the compositor tracks the workspace. Its model and keys are built together with the driver
-that uses them. On COSMIC,
+that uses them. On our desktop,
 `WorkspacePrev/Next` spawn `sill workspace prev|next`, which sill-ipc does not have yet (12.7's
 proposed addition), and `ShellIpc(s)` spawns `sill` with the words of `s`.
 
