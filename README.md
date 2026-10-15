@@ -119,8 +119,11 @@ palmrest drives the user's only pointing device, so:
 ```
 
 `install.sh` builds a release binary, installs it to `~/.local/bin`, installs
-`dist/palmrest.service` as a user unit and enables it. Two system files need root, and the
-script prints the commands for them rather than running sudo:
+`dist/palmrest.service` as a user unit and enables it. Three system files need root, and the
+script prints the commands for them (with `sudo`, `doas` or `pkexec`, whichever is found; `$SUDO`
+overrides) rather than running them. `--prefix P` installs a packaged layout under P (the user unit
+in `P/lib/systemd/user`, the system files in `P/lib/udev/rules.d`, `P/lib/modprobe.d` and
+`P/lib/modules-load.d`) and `--destdir D` stages it under D without root or systemd:
 
 - `dist/70-palmrest.rules` to `/etc/udev/rules.d/`: for the active session (`uaccess`), read
   access to the Magic Mouse 2's hidraw node and write access to `/dev/uinput` for palmrest's
@@ -128,6 +131,8 @@ script prints the commands for them rather than running sudo:
 - `dist/99-palmrest.conf` to `/etc/modprobe.d/`: `hid_magicmouse` keeps the pointer and clicks
   (`emulate_3button=1`) and stops its own wheel emulation (`emulate_scroll_wheel=0`), because
   palmrest scrolls.
+- `dist/palmrest-modules.conf` to `/etc/modules-load.d/palmrest.conf`: loads `uinput` at boot, so
+  `/dev/uinput` exists on Ubuntu and Arch too.
 
 ## Retiring the Python daemon
 
