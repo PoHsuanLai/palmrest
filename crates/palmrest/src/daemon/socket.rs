@@ -2,22 +2,30 @@
 //! `PointerOver` reports into the one claim the tracker needs (11.3.14: while any subscriber
 //! has the pointer, foreign outputs are silent).
 //!
-//! The reader thread hands messages over a channel and wakes this thread with an eventfd, so
-//! the reader never blocks on a slow subscriber: a subscriber whose queue is full misses that
-//! message rather than delaying everyone else's scroll.
+//! The reader thread hands messages over a bounded channel and wakes this thread with an
+//! eventfd, so the reader never blocks on a slow subscriber: a subscriber whose queue is full
+//! misses that message rather than delaying everyone else's scroll, and a full channel drops
+//! the message rather than stalling the reader. Subscribers are known by id, never by their
+//! position in the list, and their number is capped.
 
-use palmrest_protocol::{
-    self as protocol, DeviceInfo, Filter, Over, PROTOCOL_VERSION, ToDaemon, ToHost,
-};
-use rustix::event::{EventfdFlags, PollFd, PollFlags, eventfd, poll};
-use rustix::fd::{AsFd, OwnedFd};
-use rustix::io::Errno;
-use rustix::net::{AddressFamily, RecvFlags, SendFlags, SocketAddrUnix, SocketFlags, SocketType};
+mod client;
+mod limits;
+mod server;
+
+use limits::QUEUE_MAX;
+use palmrest_protocol::{DeviceInfo, Over, ToHost};
+use rustix::event::{EventfdFlags, eventfd};
+use rustix::fd::OwnedFd;
+use rustix::net::{AddressFamily, SocketAddrUnix, SocketFlags, SocketType};
+use server::{Exit, Server};
 use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::mpsc::{self, Sender, SyncSender, TrySendError};
+
+/// The process exit status when the socket can no longer be served; systemd restarts the unit.
+const SOCKET_LOST_STATUS: i32 = 70;
 
 /// What the reader thread tells the socket thread.
 #[derive(Debug, Clone, PartialEq)]
@@ -33,25 +41,21 @@ pub enum ToSocket {
 /// The reader's end: a channel plus the eventfd that wakes the socket thread.
 #[derive(Debug, Clone)]
 pub struct SocketHandle {
-    tx: Sender<ToSocket>,
+    tx: SyncSender<ToSocket>,
     wake: Arc<OwnedFd>,
 }
 
 impl SocketHandle {
-    /// Queues `m` and wakes the socket thread. A dead socket thread is logged by its own exit.
+    /// Queues `m` and wakes the socket thread. A full queue (a stuck thread) drops `m`; a dead
+    /// socket thread ends the process by itself, so there is nothing to report here.
     pub fn send(&self, m: ToSocket) {
-        if self.tx.send(m).is_ok() {
-            let _ = rustix::io::write(&*self.wake, &1u64.to_ne_bytes());
+        match self.tx.try_send(m) {
+            Ok(()) | Err(TrySendError::Full(_)) => {
+                let _ = rustix::io::write(&*self.wake, &1u64.to_ne_bytes());
+            }
+            Err(TrySendError::Disconnected(_)) => {}
         }
     }
-}
-
-/// One subscriber.
-#[derive(Debug)]
-struct Client {
-    fd: OwnedFd,
-    filter: Filter,
-    over: Over,
 }
 
 /// The pointer is ours if any subscriber says so.
@@ -90,177 +94,21 @@ pub fn bind(path: &Path) -> io::Result<OwnedFd> {
     Ok(fd)
 }
 
-/// Starts the socket thread on a bound listener. Claims go to `claims`.
+/// Starts the socket thread on a bound listener. Claims go to `claims`. If the thread can no
+/// longer wait for events the process exits, so the unit restarts instead of running on with a
+/// dead socket.
 pub fn spawn(listener: OwnedFd, claims: Sender<Over>) -> io::Result<SocketHandle> {
     let wake = Arc::new(eventfd(0, EventfdFlags::CLOEXEC | EventfdFlags::NONBLOCK)?);
-    let (tx, rx) = mpsc::channel();
-    let server = Server {
-        listener,
-        wake: wake.clone(),
-        rx,
-        clients: Vec::new(),
-        device: None,
-        claims,
-        claim: Over::NotOurs,
-    };
+    let (tx, rx) = mpsc::sync_channel(QUEUE_MAX);
+    let server = Server::new(listener, wake.clone(), rx, claims);
     std::thread::Builder::new()
         .name("palmrest-socket".to_owned())
-        .spawn(move || server.run())?;
+        .spawn(move || {
+            if server.run() == Exit::PollFailed {
+                std::process::exit(SOCKET_LOST_STATUS);
+            }
+        })?;
     Ok(SocketHandle { tx, wake })
-}
-
-struct Server {
-    listener: OwnedFd,
-    wake: Arc<OwnedFd>,
-    rx: Receiver<ToSocket>,
-    clients: Vec<Client>,
-    device: Option<DeviceInfo>,
-    claims: Sender<Over>,
-    claim: Over,
-}
-
-impl Server {
-    fn run(mut self) {
-        loop {
-            let ready = match self.wait() {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("palmrest: socket poll failed: {e}");
-                    return;
-                }
-            };
-            if ready.listener {
-                self.accept();
-            }
-            if ready.wake && !self.drain() {
-                return;
-            }
-            for i in ready.clients.into_iter().rev() {
-                self.receive(i);
-            }
-            self.publish_claim();
-        }
-    }
-
-    fn wait(&self) -> io::Result<Ready> {
-        let mut fds: Vec<PollFd<'_>> = vec![
-            PollFd::new(&self.listener, PollFlags::IN),
-            PollFd::new(&*self.wake, PollFlags::IN),
-        ];
-        fds.extend(
-            self.clients
-                .iter()
-                .map(|c| PollFd::new(&c.fd, PollFlags::IN)),
-        );
-        poll(&mut fds, None)?;
-        let hit = |f: &PollFd<'_>| !f.revents().is_empty();
-        Ok(Ready {
-            listener: hit(&fds[0]),
-            wake: hit(&fds[1]),
-            clients: fds[2..]
-                .iter()
-                .enumerate()
-                .filter(|(_, f)| hit(f))
-                .map(|(i, _)| i)
-                .collect(),
-        })
-    }
-
-    fn accept(&mut self) {
-        while let Ok(fd) =
-            rustix::net::accept_with(&self.listener, SocketFlags::CLOEXEC | SocketFlags::NONBLOCK)
-        {
-            let client = Client {
-                fd,
-                filter: Filter::All,
-                over: Over::NotOurs,
-            };
-            let hello = ToHost::Hello {
-                version: PROTOCOL_VERSION,
-                device: self.device.clone().unwrap_or(DeviceInfo {
-                    name: String::new(),
-                    path: String::new(),
-                    vendor: 0,
-                    product: 0,
-                }),
-            };
-            let alive = send(&client, &hello)
-                && (self.device.is_some() || send(&client, &ToHost::DeviceGone));
-            if alive {
-                self.clients.push(client);
-            }
-        }
-    }
-
-    /// Delivers everything queued; false when the reader has gone (shutdown).
-    fn drain(&mut self) -> bool {
-        let mut buf = [0u8; 8];
-        let _ = rustix::io::read(&*self.wake, &mut buf);
-        loop {
-            match self.rx.try_recv() {
-                Ok(ToSocket::Device(d)) => {
-                    self.device = Some(d.clone());
-                    self.broadcast(&ToHost::Hello {
-                        version: PROTOCOL_VERSION,
-                        device: d,
-                    });
-                }
-                Ok(ToSocket::Gone) => self.device = None,
-                Ok(ToSocket::Msg(m)) => self.broadcast(&m),
-                Err(mpsc::TryRecvError::Empty) => return true,
-                Err(mpsc::TryRecvError::Disconnected) => return false,
-            }
-        }
-    }
-
-    fn broadcast(&mut self, m: &ToHost) {
-        self.clients.retain(|c| !c.filter.admits(m) || send(c, m));
-    }
-
-    fn receive(&mut self, i: usize) {
-        let mut buf = [0u8; protocol::MAX_PACKET];
-        let keep = loop {
-            match rustix::net::recv(&self.clients[i].fd, &mut buf, RecvFlags::DONTWAIT) {
-                Ok((0, _)) => break false,
-                Ok((n, _)) => match protocol::decode::<ToDaemon>(&buf[..n]) {
-                    Ok(ToDaemon::PointerOver { over }) => self.clients[i].over = over,
-                    Ok(ToDaemon::Subscribe { filter }) => self.clients[i].filter = filter,
-                    Err(e) => eprintln!("palmrest: ignoring a malformed subscriber message: {e}"),
-                },
-                Err(Errno::AGAIN) => break true,
-                Err(_) => break false,
-            }
-        };
-        if !keep {
-            self.clients.remove(i);
-        }
-    }
-
-    fn publish_claim(&mut self) {
-        let now = aggregate(self.clients.iter().map(|c| c.over));
-        if now != self.claim {
-            self.claim = now;
-            let _ = self.claims.send(now);
-        }
-    }
-}
-
-struct Ready {
-    listener: bool,
-    wake: bool,
-    clients: Vec<usize>,
-}
-
-/// Sends one message; false if the subscriber is gone. A full queue drops the message only.
-fn send(c: &Client, m: &ToHost) -> bool {
-    match rustix::net::send(
-        c.fd.as_fd(),
-        &protocol::encode(m),
-        SendFlags::DONTWAIT | SendFlags::NOSIGNAL,
-    ) {
-        Ok(_) | Err(Errno::AGAIN) => true,
-        Err(_) => false,
-    }
 }
 
 #[cfg(test)]

@@ -21,3 +21,8 @@ notify = "8.2"
 # Not in the pinned block: poll, SOCK_SEQPACKET, eventfd, CLOCK_MONOTONIC and the ioctl
 # plumbing without libc's unsafe surface. See FINDINGS.
 rustix = { version = "1", features = ["event", "fs", "net", "time", "process"] }
+
+# A panic in any thread ends the process, so systemd (Restart=on-failure) starts a fresh one
+# instead of leaving a daemon whose socket thread is dead.
+[profile.release]
+panic = "abort"
