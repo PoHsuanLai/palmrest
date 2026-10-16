@@ -52,7 +52,19 @@ impl Setting for Action {
             }
             other => other.clone(),
         };
-        crate::config::lenient::read_serde(&tagged, key, warn)
+        let action: Option<Self> = crate::config::lenient::read_serde(&tagged, key, warn);
+        if let Some(Self::Keys(combo)) = &action
+            && !combo.is_sendable()
+        {
+            warn.push(Warning::partly_unusable(
+                key,
+                format!(
+                    "\"{combo}\" is not sent on its own, only together with ctrl, alt or super, \
+                     so this gesture will do nothing"
+                ),
+            ));
+        }
+        action
     }
 }
 
@@ -239,6 +251,37 @@ mod tests {
         assert_eq!(
             warn[0].key,
             "gestures.gesture_action_map.two_finger_swipe_left"
+        );
+    }
+
+    #[test]
+    fn a_key_that_would_type_text_earns_a_warning_but_is_kept() {
+        let text = r#"
+            one_finger_swipe_right = { kind = "keys", v = "enter" }
+            one_finger_swipe_left = { kind = "keys", v = "shift+t" }
+            two_finger_swipe_right = { kind = "keys", v = "ctrl+enter" }
+            two_finger_swipe_left = { kind = "keys", v = "f5" }
+        "#;
+        let t: toml::Table = text.parse().unwrap();
+        let mut warn = Vec::new();
+        let m = ActionMap::from_table(&t, "gestures.gesture_action_map", &mut warn);
+        let keys: Vec<&str> = warn.iter().map(|w| w.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            [
+                "gestures.gesture_action_map.one_finger_swipe_right",
+                "gestures.gesture_action_map.one_finger_swipe_left",
+            ]
+        );
+        assert!(warn[0].problem.contains("enter"), "{}", warn[0]);
+        assert!(
+            !warn[0].to_string().contains("default"),
+            "the value stays: {}",
+            warn[0]
+        );
+        assert_eq!(
+            m.one_finger_swipe_right,
+            Action::Keys(KeyCombo::try_from("enter".to_owned()).unwrap())
         );
     }
 

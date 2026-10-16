@@ -8,11 +8,21 @@ use serde::de::DeserializeOwned;
 use std::fmt;
 use toml::{Table, Value};
 
-/// A key whose value was unusable, and why; the key's default is in force.
+/// What became of a value that earned a warning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// The key's shipped default is in force.
+    DefaultUsed,
+    /// The value is in force, but part of it will not work.
+    ValueKept,
+}
+
+/// A key whose value was unusable or only partly usable, and why.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Warning {
     pub key: String,
     pub problem: String,
+    pub outcome: Outcome,
 }
 
 impl Warning {
@@ -21,13 +31,27 @@ impl Warning {
         Self {
             key: key.into(),
             problem: problem.into(),
+            outcome: Outcome::DefaultUsed,
+        }
+    }
+
+    /// A value that is read as written but cannot do what it says.
+    pub fn partly_unusable(key: impl Into<String>, problem: impl Into<String>) -> Self {
+        Self {
+            outcome: Outcome::ValueKept,
+            ..Self::unusable(key, problem)
         }
     }
 }
 
 impl fmt::Display for Warning {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {} (using the default)", self.key, self.problem)
+        match self.outcome {
+            Outcome::DefaultUsed => {
+                write!(f, "{}: {} (using the default)", self.key, self.problem)
+            }
+            Outcome::ValueKept => write!(f, "{}: {}", self.key, self.problem),
+        }
     }
 }
 

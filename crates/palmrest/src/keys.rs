@@ -28,6 +28,11 @@ impl Modifier {
         }
     }
 
+    /// Whether holding this key makes the next key a shortcut. Shift alone does not.
+    fn makes_a_shortcut(self) -> bool {
+        matches!(self, Self::Ctrl | Self::Alt | Self::Super)
+    }
+
     fn name(self) -> &'static str {
         match self {
             Self::Ctrl => "ctrl",
@@ -77,6 +82,14 @@ impl Key {
         NAMES.iter().find(|(n, _)| *n == s).map(|&(_, c)| Key(c))
     }
 
+    /// Whether the key is sent only together with ctrl, alt or super: a letter, digit,
+    /// punctuation, Enter, Space, Tab, Backspace, Delete or Escape. The input service refuses
+    /// them on their own so that palmrest cannot type text. Navigation, function keys, Insert,
+    /// Back and Forward go out freely. The service keeps the same table.
+    pub fn needs_a_shortcut_modifier(self) -> bool {
+        !matches!(self.0, 59..=68 | 87 | 88 | 102..=110 | 158 | 159)
+    }
+
     fn name(self) -> &'static str {
         NAMES
             .iter()
@@ -105,6 +118,12 @@ impl KeyCombo {
             mods: vec![Modifier::Alt],
             key,
         }
+    }
+
+    /// Whether the input service will send this combo: a key that types text must come with
+    /// ctrl, alt or super.
+    pub fn is_sendable(&self) -> bool {
+        !self.key.needs_a_shortcut_modifier() || self.mods.iter().any(|m| m.makes_a_shortcut())
     }
 
     /// Every evdev code this combo presses.
@@ -179,6 +198,53 @@ mod tests {
     fn codes_press_modifiers_first() {
         let k = KeyCombo::alt(Key::LEFT);
         assert_eq!(k.codes().collect::<Vec<_>>(), [56, 105]);
+    }
+
+    #[test]
+    fn only_a_shortcut_can_press_a_key_that_types() {
+        const CASES: &[(&str, bool)] = &[
+            ("alt+left", true),
+            ("f5", true),
+            ("shift+f5", true),
+            ("home", true),
+            ("back", true),
+            ("ctrl+shift+t", true),
+            ("super+enter", true),
+            ("ctrl+alt+delete", true),
+            ("t", false),
+            ("shift+t", false),
+            ("enter", false),
+            ("space", false),
+            ("tab", false),
+            ("shift+tab", false),
+            ("backspace", false),
+            ("delete", false),
+            ("escape", false),
+            ("minus", false),
+            ("5", false),
+            ("shift+insert", true),
+        ];
+        for &(input, want) in CASES {
+            let combo = KeyCombo::try_from(input.to_owned()).unwrap();
+            assert_eq!(combo.is_sendable(), want, "{input}");
+        }
+    }
+
+    #[test]
+    fn the_keys_that_type_are_exactly_the_ones_outside_navigation_and_function_keys() {
+        let free: Vec<&str> = NAMES
+            .iter()
+            .filter(|&&(_, c)| !Key(c).needs_a_shortcut_modifier())
+            .map(|&(n, _)| n)
+            .collect();
+        assert_eq!(
+            free,
+            [
+                "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12", "home",
+                "up", "pageup", "left", "right", "end", "down", "pagedown", "insert", "back",
+                "forward"
+            ]
+        );
     }
 
     #[test]
