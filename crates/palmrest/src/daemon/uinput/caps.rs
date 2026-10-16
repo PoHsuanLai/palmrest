@@ -10,7 +10,7 @@ use crate::outputs::events::{
     PAD_SLOTS, REL_HWHEEL, REL_HWHEEL_HI_RES, REL_WHEEL, REL_WHEEL_HI_RES,
 };
 use crate::outputs::pad::{PAD_X_MAX, PAD_Y_MAX, UNITS_PER_MM};
-use turnstile_wire::{Create, Detail, Kind};
+use turnstile_client::{Create, Detail, Kind};
 
 /// `INPUT_PROP_POINTER`: a touchpad, not a touchscreen.
 pub(super) const INPUT_PROP_POINTER: u16 = 0x00;

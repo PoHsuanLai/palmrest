@@ -23,8 +23,7 @@ notify = "8.2"
 rustix = { version = "1", features = ["event", "fs", "net", "time", "process"] }
 # The input service's client (and the wire it speaks, for the kind of device a request names).
 # By tag, never by path. Both crates live in the one repository and share one tag.
-turnstile-client = { git = "https://github.com/PoHsuanLai/turnstile", tag = "v0.1.0" }
-turnstile-wire = { git = "https://github.com/PoHsuanLai/turnstile", tag = "v0.1.0" }
+turnstile-client = { git = "https://github.com/PoHsuanLai/turnstile", tag = "v0.1.1" }
 
 # A panic in any thread ends the process, so systemd (Restart=on-failure) starts a fresh one
 # instead of leaving a daemon whose socket thread is dead.

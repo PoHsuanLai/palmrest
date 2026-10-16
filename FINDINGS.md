@@ -131,9 +131,8 @@ Mouse 1's report 0x29); `touch.rs` (12-bit wrap of deltas, now on every sensor's
   replaced; libinput sees the contact until the next stroke lands or lifts. Dropped frames are
   logged at the 1st, 2nd, 4th, 8th... loss. Revisit if the log ever shows any: the fix is to
   resend the pad's state, not to block.
-- *`turnstile-wire` is a direct dependency.* The direct path matches `Create.kind` and
-  `Create.detail`, which `turnstile-client` does not re-export. Drop the dependency when the
-  client re-exports `Kind` and `Detail` (interface ask in the lane report).
+- *`turnstile-wire` is no longer a direct dependency.* turnstile v0.1.1's client re-exports
+  `Kind` and `Detail`, which the direct path matches, and its stand-in is a dev-only feature.
 - *Rust 1.92.* `turnstile-client` declares `rust-version = "1.92"`, so the workspace's moved
   from 1.91. The pinned toolchain (1.98.1) already satisfies it.
 - *Who may talk to palmrest (INPUT-03, INPUT-14).* The socket is 0600 in a 0700 directory, so

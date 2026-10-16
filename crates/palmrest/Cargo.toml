@@ -19,4 +19,6 @@ toml.workspace = true
 notify.workspace = true
 rustix.workspace = true
 turnstile-client.workspace = true
-turnstile-wire.workspace = true
+
+[dev-dependencies]
+turnstile-client = { workspace = true, features = ["fake"] }

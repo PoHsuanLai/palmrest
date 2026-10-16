@@ -13,7 +13,7 @@ the next thing. palmrest depends on no shell crate and runs on any Linux.
 | Crate | Path | Purpose | May depend on |
 |---|---|---|---|
 | `palmrest-protocol` | `crates/palmrest-protocol` | the socket contract with shell-host: `ToHost`, `ToDaemon`, their field types, `PROTOCOL_VERSION`, `MAX_PACKET`, `encode`, `decode`, `compat` | `serde`, `serde_json`, `thiserror` |
-| `palmrest` | `crates/palmrest` | the pure core, the tools that replay recordings, and the daemon; library plus the `palmrest` binary | `palmrest-protocol`, `serde`, `serde_json`, `thiserror`, `toml`, `notify`, `rustix`, `turnstile-client`, `turnstile-wire` (git, tag `v0.1.0`; the daemon layer only) |
+| `palmrest` | `crates/palmrest` | the pure core, the tools that replay recordings, and the daemon; library plus the `palmrest` binary | `palmrest-protocol`, `serde`, `serde_json`, `thiserror`, `toml`, `notify`, `rustix`, `turnstile-client` (git, tag `v0.1.1`; the daemon layer only; its `fake` feature only as a dev dependency) |
 
 Edges: `palmrest` -> `palmrest-protocol` only. `palmrest-protocol` depends on no other workspace
 crate, and has no `toml`, `notify` or `rustix`, so shell-host takes it without pulling the
