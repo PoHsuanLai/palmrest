@@ -109,6 +109,23 @@ for P3); `sensor/magic_mouse/mod.rs` (every model gets the Magic Mouse 2's surfa
 Mouse 1's report 0x29); `touch.rs` (12-bit wrap of deltas, now on every sensor's grid);
 `config/sections.rs` (P5 in the sensor's own counts).
 
+**Deferred from the 2026-10-16 production audit (input).**
+- *Key synthesis access (INPUT-02).* `dist/70-palmrest.rules` tags `/dev/uinput` and the Magic
+  Mouse's hidraw node `uaccess`, so any process of the logged-in user can create a keyboard and
+  type into the focused client, and write to the mouse. The owner chose a small root service that
+  owns `/dev/uinput`; it is a later wave. Until then the rule stays as it is. INPUT-19's remaining
+  half (limit raw hidraw writes to the daemon) follows the same service.
+- *Who may talk to palmrest (INPUT-03, INPUT-14).* The socket is 0600 in a 0700 directory, so
+  same-uid is the whole check. Caller identity for all four same-uid channels (this socket,
+  keycap's, the focus bridge, uinput) is a later wave with one shared design.
+- *Shell side of the lock (INPUT-09).* palmrest drops gesture keys and actions while a
+  subscriber says the session is locked (`SessionLock`). Nothing sends it yet: shell-host must
+  send `ToDaemon::SessionLock` when the lock service reports Locked or Unlocked (interface ask in
+  the lane report). Neither casement nor sill publishes a lock state a daemon outside the session
+  can read, and logind's `LockedHint` is not set by sill's locker.
+- *Shared bounded reader (INPUT-12).* `config/load.rs` has its own bounded regular-file read;
+  the one shared reader belongs in chordkit and moves there when it exists.
+
 ## Standing facts
 
 **The settings file.** `$XDG_CONFIG_HOME/palmrest/gestures.toml` (22-SETTINGS §2). Every

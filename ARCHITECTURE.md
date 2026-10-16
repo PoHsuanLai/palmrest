@@ -52,7 +52,7 @@ daemon, `sys` and the CLI verbs are `pub(crate)`; the one public entry to them i
 | L4 tracker and actions | `tracker` (`Tracker::step`, `Out`), `action` (`Gesture`, `Action`, `plan`) | pure composition: `Tracker::step(self, &Frame, now) -> (Self, Vec<Out>)` | `pub` |
 | L5 outputs model | `outputs` (`Emitter`, `RecordingEmitter`, `pad`, `events`) | the seam and the models of what is written | `pub` |
 | L6 tools | `recording`, `replay` (`replay`, `feed`, `outs`, `compare`) | pure: feed recorded reads through the core | `pub` |
-| L7 effects | `daemon` (`reader`, `socket`, `discover`, `hidraw`, `evdev`, `devices`, `dispatch`, `record`, `latency`, `source`, `uinput`, `sys`) | threads, sockets, nodes, clocks, uinput, ioctls | `pub(crate)` |
+| L7 effects | `daemon` (`reader`, `socket`, `discover`, `hidraw`, `evdev`, `devices`, `dispatch`, `spawn`, `record`, `latency`, `source`, `uinput`, `sys`) | threads, sockets, nodes, clocks, uinput, ioctls | `pub(crate)` |
 | L8 entry | `command` | argument parsing, one `run(args)`; reads `std::env` once into `daemon::Env` | `pub` (one fn) |
 
 `recording` and `replay` stay public because the acceptance suite and the `palmrest replay`
@@ -99,6 +99,9 @@ decision vs lock parameters, contact tracking vs palm turn, one file per scenari
 | Recording file format | `recording` |
 | Replaying recordings, curve comparison | `replay`, `replay::compare` |
 | Threads, sockets, discovery, backoff, nodes | `daemon` |
+| Subscribers of the socket: ids, caps, budgets, the joint claim and lock | `daemon::socket::{server, client, limits}` |
+| Programs a gesture runs, and their reaping | `daemon::spawn` |
+| What the shell says about the lock screen | `palmrest_protocol::ToDaemon::SessionLock`, `Tracker::with_session_lock` |
 | uinput device creation | `daemon::uinput` |
 | ioctls and all `unsafe` | `daemon::sys` |
 | Environment, clock, directories | `daemon::Env`, built once in `command::run` |
@@ -221,6 +224,10 @@ node for writing, or reads a real config directory or a running daemon.
 
 ## 7. Repo rules
 
+- **A panic ends the process** (`panic = "abort"` in release) and a socket thread that cannot poll exits it, so
+  systemd restarts the unit; a daemon with a dead socket thread never keeps running.
+- **Everything a subscriber can make the socket thread store or read is capped** (`socket/limits.rs`):
+  subscribers, packets per pass, queued messages; a subscriber is known by id, never by position.
 - **Only `daemon` owns threads, sockets, devices, clocks and the environment.** When the core
   seems to need an effect, it returns an `Out` for the daemon to carry out.
 - **`unsafe` lives only in `daemon/sys.rs`** (the ioctls), each block with a `SAFETY` comment.
