@@ -12,6 +12,7 @@ pub mod reader;
 pub mod record;
 pub mod socket;
 pub mod source;
+pub mod spawn;
 pub(crate) mod sys;
 pub mod uinput;
 
@@ -20,6 +21,7 @@ use crate::outputs::Emitter;
 use crate::tracker::Tracker;
 use devices::{Devices, Factory};
 pub use env::Env;
+use spawn::Spawner;
 use std::sync::mpsc;
 use uinput::UinputEmitter;
 
@@ -53,12 +55,14 @@ pub fn run(env: &Env) -> Result<(), String> {
     let factory: Factory = Box::new(|foreign, combos| {
         Ok(Box::new(UinputEmitter::create(foreign, combos)?) as Box<dyn Emitter>)
     });
+    let spawner = Spawner::start().map_err(|e| format!("reaper thread: {e}"))?;
     let now = hidraw::now();
     let reader = reader::Reader {
         socket,
         notes: notes_rx,
         configs: config_rx,
         devices: Devices::new(factory, &loaded.config, now),
+        spawner,
         desktop: env.desktop,
         tracker: Tracker::new(loaded.config),
     };

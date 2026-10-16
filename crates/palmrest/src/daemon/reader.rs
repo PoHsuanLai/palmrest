@@ -7,6 +7,7 @@ use super::dispatch::dispatch;
 use super::hidraw::{self, Read};
 use super::socket::{FromSocket, SocketHandle, ToSocket};
 use super::source::{self, Opened, Purpose};
+use super::spawn::Spawner;
 use crate::action::Desktop;
 use crate::config::Loaded;
 use crate::recording::Record;
@@ -27,6 +28,7 @@ pub struct Reader {
     pub notes: Receiver<FromSocket>,
     pub configs: Receiver<Loaded>,
     pub devices: Devices,
+    pub spawner: Spawner,
     pub desktop: Desktop,
     pub tracker: Tracker,
 }
@@ -132,7 +134,13 @@ impl Reader {
     }
 
     fn emit(mut self, outs: Vec<Out>) -> Self {
-        dispatch(outs, &self.socket, &mut self.devices, self.desktop);
+        dispatch(
+            outs,
+            &self.socket,
+            &mut self.devices,
+            &self.spawner,
+            self.desktop,
+        );
         match self.devices.take_health() {
             Health::Fine => self,
             Health::LostDevices => Self {

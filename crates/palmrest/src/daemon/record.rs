@@ -8,7 +8,9 @@ use super::hidraw::{self, Read};
 use super::source::{self, Purpose};
 use crate::config::DeviceSource;
 use crate::recording::{Record, encode_record, header};
+use std::fs::OpenOptions;
 use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::path::Path;
 use std::time::Duration;
 
@@ -21,11 +23,24 @@ pub struct Limits {
     pub total: Duration,
 }
 
+/// Mode of a new recording file: touch traces are the person's, not the machine's.
+const RECORDING_MODE: u32 = 0o600;
+
+/// Creates (or empties) `path` for writing; a new file is readable by its owner only.
+fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
+    OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(RECORDING_MODE)
+        .open(path)
+}
+
 /// Records until a limit is reached; returns the number of reads captured.
 pub fn record(out: &Path, source: DeviceSource, limits: Limits) -> Result<usize, String> {
     let opened = source::open(source, Purpose::Record)?;
     let info = &opened.info;
-    let mut file = std::fs::File::create(out).map_err(|e| format!("{}: {e}", out.display()))?;
+    let mut file = create_private(out).map_err(|e| format!("{}: {e}", out.display()))?;
     file.write_all(&header(&opened.recorded()))
         .map_err(|e| e.to_string())?;
     eprintln!(
@@ -55,4 +70,22 @@ pub fn record(out: &Path, source: DeviceSource, limits: Limits) -> Result<usize,
     }
     file.flush().map_err(|e| e.to_string())?;
     Ok(count)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn a_new_recording_is_private_whatever_the_umask() {
+        let dir = std::env::temp_dir().join(format!("palmrest-rec-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("trace.bin");
+        drop(create_private(&path).unwrap());
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode();
+        // The process umask can only remove bits, never add group or other access.
+        assert_eq!(mode & 0o077, 0);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
