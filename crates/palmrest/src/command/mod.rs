@@ -10,6 +10,7 @@ mod schema;
 mod tests;
 
 use crate::config::{self, Config};
+use crate::daemon::uinput::Origin;
 use crate::daemon::{self, Env};
 use crate::replay::Timing;
 use std::path::PathBuf;
@@ -17,15 +18,17 @@ use std::process::ExitCode;
 use std::time::Duration;
 
 const USAGE: &str = "usage:
-  palmrest                         run the daemon
+  palmrest [--direct-uinput]       run the daemon (--direct-uinput: make the virtual devices
+                                   without the input service, for development)
   palmrest record FILE [SECONDS]   record raw reads of the configured device.source
                                    (stops after 20 s of no touch)
   palmrest replay FILE [--calibrated] [--latency]
                                    print the outputs a recording produces
   palmrest replay FILE [--calibrated] --curve mac-like
                                    cumulative px and peak gain under both curves
-  palmrest --check-uinput          can this user create virtual devices? (needs
-                                   PALMREST_ALLOW_UINPUT_PROBE=1; opens and closes only)
+  palmrest --check-uinput [--direct-uinput]
+                                   can palmrest make its virtual devices? (asks for a touchpad
+                                   and lets it go)
   palmrest --print-config          print the default gestures.toml
   palmrest --write-schema DIR      write palmrest.settings.toml, the schema of gestures.toml,
                                    into DIR (for the Settings app)";
@@ -47,7 +50,9 @@ enum ReplayReport {
 /// One invocation of the command.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Command {
-    Daemon,
+    Daemon {
+        origin: Origin,
+    },
     Record {
         file: PathBuf,
         total: Duration,
@@ -57,7 +62,9 @@ enum Command {
         report: ReplayReport,
         timing: Timing,
     },
-    CheckUinput,
+    CheckUinput {
+        origin: Origin,
+    },
     PrintConfig,
     WriteSchema {
         dir: PathBuf,
@@ -68,7 +75,12 @@ enum Command {
 /// The command `args` (without the program name) ask for; `None` is a usage error.
 fn parse(args: &[&str]) -> Option<Command> {
     match args {
-        [] => Some(Command::Daemon),
+        [] => Some(Command::Daemon {
+            origin: Origin::Service,
+        }),
+        ["--direct-uinput"] => Some(Command::Daemon {
+            origin: Origin::Direct,
+        }),
         ["record", file] => Some(Command::Record {
             file: PathBuf::from(file),
             total: DEFAULT_RECORD,
@@ -86,7 +98,12 @@ fn parse(args: &[&str]) -> Option<Command> {
                 Timing::Arrival
             },
         }),
-        ["--check-uinput"] => Some(Command::CheckUinput),
+        ["--check-uinput"] => Some(Command::CheckUinput {
+            origin: Origin::Service,
+        }),
+        ["--check-uinput", "--direct-uinput"] => Some(Command::CheckUinput {
+            origin: Origin::Direct,
+        }),
         ["--print-config"] => Some(Command::PrintConfig),
         ["--write-schema", dir] => Some(Command::WriteSchema {
             dir: PathBuf::from(dir),
@@ -128,14 +145,14 @@ pub fn run(args: impl IntoIterator<Item = String>) -> ExitCode {
 
 fn execute(command: Command, env: &Env) -> Result<(), String> {
     match command {
-        Command::Daemon => daemon::run(env),
+        Command::Daemon { origin } => daemon::run(env, origin),
         Command::Record { file, total } => record::record(&file, total, env),
         Command::Replay {
             file,
             report,
             timing,
         } => replay::replay(&file, report, timing, env),
-        Command::CheckUinput => probe::check_uinput(env),
+        Command::CheckUinput { origin } => probe::check_uinput(origin),
         Command::PrintConfig => {
             print!("{}", config::to_toml(&Config::default()));
             Ok(())

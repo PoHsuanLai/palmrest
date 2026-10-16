@@ -3,10 +3,13 @@
 #
 #   ./install.sh [--dry-run] [--prefix P] [--destdir D] [--no-build]
 #
-#   (no flags)    a user install: the program in ~/.local/bin and a user service that is enabled
-#                 and started. The two system files (hidraw and uinput access, kernel module
-#                 options) and the module-load file need root; the script prints the commands for
-#                 them instead of running them.
+#   (no flags)    a user install: the program in /usr/local/bin (a root-owned file: the input
+#                 service serves only a palmrest that only root can change, so it is copied
+#                 through $SUDO, sudo, doas or pkexec) and a user service in your home that is
+#                 enabled and started. The system files (hidraw access, kernel module options)
+#                 and the module-load file need root; the script prints the commands for them
+#                 instead of running them. The input service (turnstile) comes with the desktop
+#                 and makes the virtual devices; palmrest no longer needs access to /dev/uinput.
 #   --prefix P    a packaged layout under P: P/bin/palmrest, the user unit in
 #                 P/lib/systemd/user (its ExecStart names P/bin/palmrest), and the system files in
 #                 P/lib/udev/rules.d, P/lib/modprobe.d and P/lib/modules-load.d. Nothing is
@@ -42,7 +45,7 @@ while [[ $# -gt 0 ]]; do
     --prefix) PREFIX="$(absolute_arg --prefix "${2:?--prefix needs a directory}")"; shift ;;
     --destdir) DESTDIR="$(absolute_arg --destdir "${2:?--destdir needs a directory}")"; shift ;;
     --no-build) BUILD=no ;;
-    -h|--help) sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help) sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) say "install.sh: unknown argument $1 (try --help)"; exit 2 ;;
   esac
   shift
@@ -71,12 +74,13 @@ printed_root() {
   if (( ${#ESCALATE[@]} > 0 )); then printf '%s ' "${ESCALATE[@]}"; else printf ''; fi
 }
 
-# set_layout: where each file goes. The user install keeps the program and unit in the home and the
-# system files in /etc (printed, not run); a prefix is a package layout with the vendor directories.
+# set_layout: where each file goes. The user install puts the program in /usr/local/bin (root-owned),
+# the unit in the home and the system files in /etc (printed, not run); a prefix is a package layout
+# with the vendor directories.
 set_layout() {
   if [[ -z "$PREFIX" ]]; then
     LAYOUT=user
-    BINDIR="$HOME/.local/bin"
+    BINDIR=/usr/local/bin
     UNITDIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
     UDEVDIR=/etc/udev/rules.d
     MODPROBEDIR=/etc/modprobe.d
@@ -100,11 +104,17 @@ run() {
   [[ "$DRY_RUN" == yes ]] || "$@"
 }
 
+# put_home_file MODE SRC DST: copy SRC to DST in the home, as you.
+put_home_file() {
+  local mode="$1" src="$2" dst="$3"
+  run "install $dst" install -Dm"$mode" "$src" "$dst"
+}
+
 # put_file MODE SRC DST: copy SRC to DST (under DESTDIR), through the escalation helper when a
 # machine path needs root and we are neither root nor staging.
 put_file() {
   local mode="$1" src="$2" dst="$3"
-  if [[ -n "$DESTDIR" || "$LAYOUT" == user || "$(id -u)" == 0 ]]; then
+  if [[ -n "$DESTDIR" || "$(id -u)" == 0 ]]; then
     run "install $dst" install -Dm"$mode" "$src" "$DESTDIR$dst"
   elif (( ${#ESCALATE[@]} > 0 )); then
     run "install $dst" "${ESCALATE[@]}" install -Dm"$mode" "$src" "$dst"
@@ -124,18 +134,17 @@ if [[ "$BUILD" == yes ]]; then
   fi
 fi
 
-# The unit names the installed program, never the DESTDIR-prefixed path. The user install keeps the
-# shipped %h/.local/bin form.
+# The unit names the installed program, never the DESTDIR-prefixed path, and always a root-owned one.
 RENDERED="$(mktemp -d)"
 trap 'rm -rf "$RENDERED"' EXIT
-if [[ "$LAYOUT" == user ]]; then
-  cp "$HERE/dist/palmrest.service" "$RENDERED/$UNIT"
-else
-  sed "s|^ExecStart=.*|ExecStart=$BINDIR/palmrest|" "$HERE/dist/palmrest.service" >"$RENDERED/$UNIT"
-fi
+sed "s|^ExecStart=.*|ExecStart=$BINDIR/palmrest|" "$HERE/dist/palmrest.service" >"$RENDERED/$UNIT"
 
 put_file 755 "$BIN" "$BINDIR/palmrest"
-put_file 644 "$RENDERED/$UNIT" "$UNITDIR/$UNIT"
+if [[ "$LAYOUT" == user ]]; then
+  put_home_file 644 "$RENDERED/$UNIT" "$UNITDIR/$UNIT"
+else
+  put_file 644 "$RENDERED/$UNIT" "$UNITDIR/$UNIT"
+fi
 
 if [[ "$LAYOUT" == package ]]; then
   put_file 644 "$HERE/dist/70-palmrest.rules" "$UDEVDIR/70-palmrest.rules"

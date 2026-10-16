@@ -23,10 +23,10 @@ use devices::{Devices, Factory};
 pub use env::Env;
 use spawn::Spawner;
 use std::sync::mpsc;
-use uinput::UinputEmitter;
+use uinput::{LiveRoute, Origin, UinputEmitter};
 
-/// Runs the daemon: never returns unless setup fails.
-pub fn run(env: &Env) -> Result<(), String> {
+/// Runs the daemon, making its virtual devices from `origin`: never returns unless setup fails.
+pub fn run(env: &Env, origin: Origin) -> Result<(), String> {
     let dir = env.config_dir.clone();
     let loaded: Loaded = config::load(dir.as_deref());
     loaded
@@ -52,8 +52,9 @@ pub fn run(env: &Env) -> Result<(), String> {
     let (notes_tx, notes_rx) = mpsc::channel();
     let socket = socket::spawn(listener, notes_tx).map_err(|e| format!("socket thread: {e}"))?;
     eprintln!("palmrest: listening on {}", path.display());
-    let factory: Factory = Box::new(|foreign, combos| {
-        Ok(Box::new(UinputEmitter::create(foreign, combos)?) as Box<dyn Emitter>)
+    let route = LiveRoute::live(origin);
+    let factory: Factory = Box::new(move |foreign, combos| {
+        Ok(Box::new(UinputEmitter::create(&route, foreign, combos)?) as Box<dyn Emitter>)
     });
     let spawner = Spawner::start().map_err(|e| format!("reaper thread: {e}"))?;
     let now = hidraw::now();

@@ -1,8 +1,11 @@
-//! The virtual devices of a daemon run, created lazily and retried while uinput is not ready.
+//! The virtual devices of a daemon run, created lazily and retried while they are not ready.
 //!
-//! At boot the uinput ACL can arrive after the user session starts. The reader keeps running
-//! meanwhile, so the socket
-//! stream to our own surfaces never waits on the virtual devices.
+//! At boot the input service can arrive after the user session starts. The reader keeps running
+//! meanwhile, so the socket stream to our own surfaces never waits on the virtual devices.
+//!
+//! When the service cuts palmrest off (closes the connection, refuses it, stops answering), the
+//! devices are rebuilt after a pause, a few times; a service that keeps cutting us off ends the
+//! virtual devices until the settings change, and the log says why.
 
 use super::discover::Backoff;
 use crate::config::{Config, ForeignOutput};
@@ -31,15 +34,51 @@ impl Shape {
     }
 }
 
+/// Times the service cut palmrest off since a frame last went through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+struct Cuts(u8);
+
+impl Cuts {
+    /// Rebuilds tried after a cut before the devices are given up: a service restarting or
+    /// a daemon reloaded answers within a few seconds, and one that does not is not coming back.
+    const RECONNECT_TRIES: u8 = 3;
+
+    fn one_more(self) -> Self {
+        Self(self.0.saturating_add(1))
+    }
+
+    /// The first cut is the loss itself; each rebuild that fails or is cut again is another.
+    fn spent(self) -> bool {
+        self.0 > Self::RECONNECT_TRIES
+    }
+}
+
 enum State {
-    Ready(Box<dyn Emitter>),
+    Ready {
+        emitter: Box<dyn Emitter>,
+        cuts: Cuts,
+    },
     /// A write failed (the device was destroyed, the module reloaded): the next `poll` starts
     /// the wait for a rebuilt one.
-    Lost,
+    Lost { cuts: Cuts },
     Waiting {
         retry_at: Mono,
         backoff: Backoff,
+        cuts: Cuts,
     },
+    /// The service kept cutting palmrest off: frames are dropped until the shape changes.
+    Dead,
+}
+
+impl State {
+    /// The wait before the first rebuild.
+    fn waiting(retry_at: Mono, cuts: Cuts) -> Self {
+        Self::Waiting {
+            retry_at,
+            backoff: Backoff::UINPUT,
+            cuts,
+        }
+    }
 }
 
 /// Whether the devices were lost since the reader last asked.
@@ -60,14 +99,10 @@ pub struct Devices {
 
 impl Devices {
     pub fn new(factory: Factory, c: &Config, now: Mono) -> Self {
-        let waiting = State::Waiting {
-            retry_at: now,
-            backoff: Backoff::UINPUT,
-        };
         Self {
             factory,
             shape: Shape::of(c),
-            state: waiting,
+            state: State::waiting(now, Cuts::default()),
             health: Health::Fine,
         }
         .poll(now)
@@ -80,10 +115,7 @@ impl Devices {
             return self;
         }
         self.shape = shape;
-        self.state = State::Waiting {
-            retry_at: now,
-            backoff: Backoff::UINPUT,
-        };
+        self.state = State::waiting(now, Cuts::default());
         self.poll(now)
     }
 
@@ -96,38 +128,64 @@ impl Devices {
     /// device is not tried before the first backoff delay, so a device that is created but
     /// cannot be written is rebuilt once a second at most.
     pub fn poll(mut self, now: Mono) -> Self {
-        if let State::Lost = self.state {
+        if let State::Lost { cuts } = self.state {
             let (delay, backoff) = Backoff::UINPUT.step();
             self.state = State::Waiting {
                 retry_at: now.after(delay),
                 backoff,
+                cuts,
             };
             eprintln!(
                 "palmrest: virtual input lost; rebuilding in {}s",
                 delay.as_secs()
             );
         }
-        if let State::Waiting { retry_at, backoff } = self.state {
+        if let State::Waiting {
+            retry_at,
+            backoff,
+            cuts,
+        } = self.state
+        {
             if now < retry_at {
                 return self;
             }
             self.state = match (self.factory)(self.shape.foreign, &self.shape.combos) {
-                Ok(e) => State::Ready(e),
-                Err(err) => {
-                    let (delay, backoff) = backoff.step();
-                    eprintln!(
-                        "palmrest: virtual input not ready: {err}; retrying in {}s",
-                        delay.as_secs()
-                    );
-                    State::Waiting {
-                        retry_at: now.after(delay),
-                        backoff,
-                    }
-                }
+                Ok(emitter) => State::Ready { emitter, cuts },
+                Err(err) => failed_build(&err, now, backoff, cuts),
             };
         }
         self
     }
+}
+
+/// The state after a rebuild failed: wait and try again, unless the service has cut palmrest
+/// off too often.
+fn failed_build(err: &OutputError, now: Mono, backoff: Backoff, cuts: Cuts) -> State {
+    let cuts = match err {
+        OutputError::Cut(_) => cuts.one_more(),
+        _ => cuts,
+    };
+    if cuts.spent() {
+        return gave_up(err);
+    }
+    let (delay, backoff) = backoff.step();
+    eprintln!(
+        "palmrest: virtual input not ready: {err}; retrying in {}s",
+        delay.as_secs()
+    );
+    State::Waiting {
+        retry_at: now.after(delay),
+        backoff,
+        cuts,
+    }
+}
+
+fn gave_up(err: &OutputError) -> State {
+    eprintln!(
+        "palmrest: virtual input stopped: {err}. It starts again after a change of settings or \
+         a restart of palmrest."
+    );
+    State::Dead
 }
 
 impl Devices {
@@ -137,13 +195,24 @@ impl Devices {
         &mut self,
         write: impl FnOnce(&mut dyn Emitter) -> Result<(), OutputError>,
     ) -> Result<(), OutputError> {
-        let State::Ready(emitter) = &mut self.state else {
+        let State::Ready { emitter, cuts } = &mut self.state else {
             return Ok(());
         };
         let result = write(emitter.as_mut());
-        if result.is_err() {
-            self.state = State::Lost;
-            self.health = Health::LostDevices;
+        match &result {
+            Ok(()) => *cuts = Cuts::default(),
+            Err(err) => {
+                let cuts = match err {
+                    OutputError::Cut(_) => cuts.one_more(),
+                    _ => *cuts,
+                };
+                self.state = if cuts.spent() {
+                    gave_up(err)
+                } else {
+                    State::Lost { cuts }
+                };
+                self.health = Health::LostDevices;
+            }
         }
         result
     }
@@ -164,92 +233,4 @@ impl Emitter for Devices {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::outputs::RecordingEmitter;
-    use std::cell::Cell;
-    use std::rc::Rc;
-
-    #[test]
-    fn waits_then_becomes_ready_and_rebuilds_on_a_shape_change() {
-        let calls = Rc::new(Cell::new(0));
-        let c2 = calls.clone();
-        let factory: Factory = Box::new(move |_, _| {
-            c2.set(c2.get() + 1);
-            if c2.get() < 2 {
-                Err(OutputError::Unavailable("no acl yet".into()))
-            } else {
-                Ok(Box::new(RecordingEmitter::default()))
-            }
-        });
-        let cfg = Config::default();
-        let d = Devices::new(factory, &cfg, Mono(0));
-        assert_eq!(calls.get(), 1);
-        let mut d = d.poll(Mono::from_millis(500));
-        assert_eq!(calls.get(), 1, "not before the backoff");
-        assert!(
-            d.wheel(&WheelDelta::default()).is_ok(),
-            "frames are dropped while waiting"
-        );
-        let d = d.poll(Mono::from_millis(1000));
-        assert_eq!(calls.get(), 2);
-        let d = d.reconfigure(&cfg, Mono::from_millis(1100));
-        assert_eq!(calls.get(), 2, "same shape, same devices");
-        let wheel = Config {
-            foreign_output: ForeignOutput::Wheel,
-            ..Config::default()
-        };
-        let _ = d.reconfigure(&wheel, Mono::from_millis(1200));
-        assert_eq!(calls.get(), 3);
-    }
-
-    /// An emitter whose every write fails, as a destroyed uinput device does.
-    struct Destroyed;
-
-    impl Emitter for Destroyed {
-        fn pad(&mut self, _: &PadFrame) -> Result<(), OutputError> {
-            Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
-        }
-        fn wheel(&mut self, _: &WheelDelta) -> Result<(), OutputError> {
-            Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
-        }
-        fn key(&mut self, _: &KeyCombo) -> Result<(), OutputError> {
-            Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
-        }
-    }
-
-    #[test]
-    fn a_failed_write_rebuilds_the_devices_and_reports_the_loss_once() {
-        let built = Rc::new(Cell::new(0));
-        let b = built.clone();
-        let factory: Factory = Box::new(move |_, _| {
-            b.set(b.get() + 1);
-            if b.get() == 1 {
-                Ok(Box::new(Destroyed))
-            } else {
-                Ok(Box::new(RecordingEmitter::default()))
-            }
-        });
-        let mut d = Devices::new(factory, &Config::default(), Mono(0));
-        assert_eq!(built.get(), 1);
-        assert_eq!(d.take_health(), Health::Fine);
-
-        assert!(
-            d.wheel(&WheelDelta::default()).is_err(),
-            "the failure is returned once"
-        );
-        assert_eq!(d.take_health(), Health::LostDevices);
-        assert_eq!(d.take_health(), Health::Fine, "asking resets it");
-        assert!(
-            d.wheel(&WheelDelta::default()).is_ok(),
-            "frames while rebuilding are dropped without another error"
-        );
-
-        let d = d.poll(Mono::from_millis(10));
-        assert_eq!(built.get(), 1, "not before the backoff");
-        let mut d = d.poll(Mono::from_millis(1010));
-        assert_eq!(built.get(), 2, "rebuilt once the delay has passed");
-        assert!(d.wheel(&WheelDelta::default()).is_ok());
-        assert_eq!(d.take_health(), Health::Fine);
-    }
-}
+mod tests;

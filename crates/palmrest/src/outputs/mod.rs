@@ -14,10 +14,15 @@ use thiserror::Error;
 /// A virtual device write that failed.
 #[derive(Debug, Error)]
 pub enum OutputError {
-    #[error("uinput is not available: {0}")]
+    /// Not there yet (the service is starting, the node is closed): worth trying again.
+    #[error("virtual input is not available: {0}")]
     Unavailable(String),
     #[error("writing to the virtual device failed: {0}")]
     Write(#[from] std::io::Error),
+    /// The input service closed the connection, turned palmrest away or stopped answering. The
+    /// text says why, in plain words. Too many in a row end the virtual devices.
+    #[error("{0}")]
+    Cut(String),
 }
 
 /// Where foreign-client frames go.

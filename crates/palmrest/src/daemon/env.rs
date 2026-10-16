@@ -1,7 +1,6 @@
 //! What the daemon and its verbs take from the process environment, read once in
 //! `command::run` so nothing below it reads `std::env`.
 
-use super::uinput::{PROBE_PERMIT, ProbePermit};
 use crate::action::Desktop;
 use crate::config;
 use std::path::PathBuf;
@@ -15,8 +14,6 @@ pub struct Env {
     pub runtime_dir: Option<PathBuf>,
     /// The desktop an action is planned for (`$XDG_CURRENT_DESKTOP`).
     pub desktop: Desktop,
-    /// Whether `--check-uinput` may open the uinput node.
-    pub probe: ProbePermit,
 }
 
 impl Env {
@@ -28,7 +25,6 @@ impl Env {
                 .filter(|s| !s.is_empty())
                 .map(PathBuf::from),
             desktop: Desktop::from_env_value(&lookup("XDG_CURRENT_DESKTOP").unwrap_or_default()),
-            probe: ProbePermit::from_env_value(lookup(PROBE_PERMIT).as_deref()),
         }
     }
 }
@@ -40,14 +36,13 @@ mod tests {
 
     #[test]
     fn lookup_table() {
-        // (name, variables set, config dir, runtime dir, desktop, probe permit)
+        // (name, variables set, config dir, runtime dir, desktop)
         type Case = (
             &'static str,
             &'static [(&'static str, &'static str)],
             Option<&'static str>,
             Option<&'static str>,
             Desktop,
-            ProbePermit,
         );
         const CASES: &[Case] = &[
             (
@@ -56,12 +51,10 @@ mod tests {
                     ("HOME", "/home/u"),
                     ("XDG_RUNTIME_DIR", "/run/user/1"),
                     ("XDG_CURRENT_DESKTOP", "KDE"),
-                    (PROBE_PERMIT, "1"),
                 ],
                 Some("/home/u/.config/palmrest"),
                 Some("/run/user/1"),
                 Desktop::Kde,
-                ProbePermit::Granted,
             ),
             (
                 "an empty environment has no directories",
@@ -69,10 +62,9 @@ mod tests {
                 None,
                 None,
                 Desktop::Other,
-                ProbePermit::Refused,
             ),
         ];
-        for &(name, vars, config_dir, runtime_dir, desktop, probe) in CASES {
+        for &(name, vars, config_dir, runtime_dir, desktop) in CASES {
             let env = Env::from_lookup(|k| {
                 vars.iter()
                     .find(|(var, _)| *var == k)
@@ -89,7 +81,6 @@ mod tests {
                 "{name}"
             );
             assert_eq!(env.desktop, desktop, "{name}");
-            assert_eq!(env.probe, probe, "{name}");
         }
     }
 }

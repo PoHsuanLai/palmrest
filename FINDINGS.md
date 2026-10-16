@@ -110,11 +110,32 @@ Mouse 1's report 0x29); `touch.rs` (12-bit wrap of deltas, now on every sensor's
 `config/sections.rs` (P5 in the sensor's own counts).
 
 **Deferred from the 2026-10-16 production audit (input).**
-- *Key synthesis access (INPUT-02).* `dist/70-palmrest.rules` tags `/dev/uinput` and the Magic
-  Mouse's hidraw node `uaccess`, so any process of the logged-in user can create a keyboard and
-  type into the focused client, and write to the mouse. The owner chose a small root service that
-  owns `/dev/uinput`; it is a later wave. Until then the rule stays as it is. INPUT-19's remaining
-  half (limit raw hidraw writes to the daemon) follows the same service.
+- *Key synthesis access (INPUT-02): done in this repository, the rest is the desktop's.*
+  palmrest asks the input service (turnstile, `turnstile-client` at tag `v0.1.0`) for its
+  touchpad, wheel and keyboard instead of opening `/dev/uinput`. `dist/70-palmrest.rules` no
+  longer tags the node (the hidraw line stays), `dist/palmrest.service` has a root-owned
+  `ExecStart` and `UnsetEnvironment=` for the library-path variables, and `install.sh` installs
+  the program to `/usr/local/bin`. The service refuses a letter, digit, punctuation, Enter,
+  Space, Tab, Backspace, Delete or Escape unless ctrl, alt or super is held, so palmrest warns
+  at load time about a mapped combination like that. Still to come: the desktop installer
+  placing the service and `72-turnstile.rules` (`pa2-desk`). INPUT-19's remaining half (limit raw
+  hidraw writes to the daemon) is not done: the hidraw rule keeps `uaccess`.
+- *The direct fallback goes in the next release.* `Route::ServiceThenNode` (`daemon/uinput/route.rs`)
+  makes palmrest open `/dev/uinput` itself when the service is absent and the node opens, with a
+  warning. It exists so that no release leaves a machine without a pad while the service and
+  the closed node arrive together. Remove it, and `Origin::Service` meaning "the service, else
+  the node", in the release after the desktop ships the service. `--direct-uinput` stays for
+  development.
+- *A lost pad frame can leave a contact down.* When the service's queue is full the frame is
+  dropped and counted (the next frame replaces a move), but a dropped `Land` or `Lift` is not
+  replaced; libinput sees the contact until the next stroke lands or lifts. Dropped frames are
+  logged at the 1st, 2nd, 4th, 8th... loss. Revisit if the log ever shows any: the fix is to
+  resend the pad's state, not to block.
+- *`turnstile-wire` is a direct dependency.* The direct path matches `Create.kind` and
+  `Create.detail`, which `turnstile-client` does not re-export. Drop the dependency when the
+  client re-exports `Kind` and `Detail` (interface ask in the lane report).
+- *Rust 1.92.* `turnstile-client` declares `rust-version = "1.92"`, so the workspace's moved
+  from 1.91. The pinned toolchain (1.98.1) already satisfies it.
 - *Who may talk to palmrest (INPUT-03, INPUT-14).* The socket is 0600 in a 0700 directory, so
   same-uid is the whole check. Caller identity for all four same-uid channels (this socket,
   keycap's, the focus bridge, uinput) is a later wave with one shared design.

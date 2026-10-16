@@ -18,3 +18,5 @@ serde_json.workspace = true
 toml.workspace = true
 notify.workspace = true
 rustix.workspace = true
+turnstile-client.workspace = true
+turnstile-wire.workspace = true

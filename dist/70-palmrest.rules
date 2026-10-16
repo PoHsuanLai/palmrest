@@ -1,9 +1,8 @@
 # palmrest: raw touch reports of the Magic Mouse 2 (Bluetooth 004C:0269) for the active session.
 # Install to /etc/udev/rules.d. Keep the name lexically before systemd's 73-seat-late.rules so
 # uaccess runs.
+#
+# There is no rule for /dev/uinput: palmrest's virtual devices are made by the input service
+# (turnstile), which closes that node to everyone else. Giving it to the logged-in user would let
+# any program of theirs type into the focused window.
 SUBSYSTEM=="hidraw", KERNELS=="0005:004C:0269.*", MODE="0660", TAG+="uaccess"
-
-# /dev/uinput for the active session, so palmrest can create its virtual wheel, pad and key
-# devices without the `input` group. `static_node` gives the node the tag before the uinput
-# module is loaded.
-KERNEL=="uinput", SUBSYSTEM=="misc", MODE="0660", TAG+="uaccess", OPTIONS+="static_node=uinput"

@@ -13,7 +13,7 @@ the next thing. palmrest depends on no shell crate and runs on any Linux.
 | Crate | Path | Purpose | May depend on |
 |---|---|---|---|
 | `palmrest-protocol` | `crates/palmrest-protocol` | the socket contract with shell-host: `ToHost`, `ToDaemon`, their field types, `PROTOCOL_VERSION`, `MAX_PACKET`, `encode`, `decode`, `compat` | `serde`, `serde_json`, `thiserror` |
-| `palmrest` | `crates/palmrest` | the pure core, the tools that replay recordings, and the daemon; library plus the `palmrest` binary | `palmrest-protocol`, `serde`, `serde_json`, `thiserror`, `toml`, `notify`, `rustix` |
+| `palmrest` | `crates/palmrest` | the pure core, the tools that replay recordings, and the daemon; library plus the `palmrest` binary | `palmrest-protocol`, `serde`, `serde_json`, `thiserror`, `toml`, `notify`, `rustix`, `turnstile-client`, `turnstile-wire` (git, tag `v0.1.0`; the daemon layer only) |
 
 Edges: `palmrest` -> `palmrest-protocol` only. `palmrest-protocol` depends on no other workspace
 crate, and has no `toml`, `notify` or `rustix`, so shell-host takes it without pulling the
@@ -31,7 +31,7 @@ daemon, `sys` and the CLI verbs are `pub(crate)`; the one public entry to them i
 |---|---|
 | `crates/palmrest/src/protocol.rs` | `crates/palmrest-protocol/src/lib.rs` split into `message.rs` (`ToHost`, `ToDaemon`, `Filter`, `Topic`, `DeviceInfo`), `vocab.rs` (`GestureId`, `Phase`, `Axis`, `TapKind`, `ActiveTouch`, `Over`), `wire.rs` (`encode`, `decode`, `Compat`, `compat`, constants), `tests.rs` |
 | `crates/palmrest/src/lib.rs` re-export `pub use protocol::{ToDaemon, ToHost}` | deleted; callers import `palmrest_protocol` |
-| `outputs/uinput.rs` | `daemon/uinput.rs` |
+| `outputs/uinput.rs` | `daemon/uinput/` (`caps`, `direct`, `emitter`, `route`, `probe`) |
 | `sys.rs` | `daemon/sys.rs` (the one `unsafe` module) |
 | `main.rs` verbs (`record_cmd`, `replay_cmd`, `check_uinput`, usage, arguments) | `command/{mod.rs (Command, parse, run), record.rs, replay.rs, probe.rs}`; `main.rs` is `fn main() -> ExitCode { palmrest::command::run(std::env::args()) }` |
 | `compare.rs` | `replay/compare.rs` |
@@ -102,7 +102,8 @@ decision vs lock parameters, contact tracking vs palm turn, one file per scenari
 | Subscribers of the socket: ids, caps, budgets, the joint claim and lock | `daemon::socket::{server, client, limits}` |
 | Programs a gesture runs, and their reaping | `daemon::spawn` |
 | What the shell says about the lock screen | `palmrest_protocol::ToDaemon::SessionLock`, `Tracker::with_session_lock` |
-| uinput device creation | `daemon::uinput` |
+| The virtual devices: what each is, asking the input service for them, the direct fallback | `daemon::uinput::{caps, emitter, direct, route}` |
+| When to rebuild the devices after a cut, and when to give up | `daemon::devices` |
 | ioctls and all `unsafe` | `daemon::sys` |
 | Environment, clock, directories | `daemon::Env`, built once in `command::run` |
 | Command-line verbs | `command` |
@@ -112,7 +113,7 @@ decision vs lock parameters, contact tracking vs palm turn, one file per scenari
 | Trait | Signature | Implementors |
 |---|---|---|
 | `Sensor` (`sensor`) | `fn surface(&self) -> Surface; fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, SensorError>` | `MagicMouseHid`, `EvdevMultitouch` |
-| `Emitter` (`outputs`) | `fn pad(&mut self, f: &PadFrame) -> Result<(), OutputError>; fn wheel(&mut self, d: &WheelDelta) -> Result<(), OutputError>; fn key(&mut self, k: &KeyCombo) -> Result<(), OutputError>` | `daemon::uinput::UinputEmitter`, `RecordingEmitter` |
+| `Emitter` (`outputs`) | `fn pad(&mut self, f: &PadFrame) -> Result<(), OutputError>; fn wheel(&mut self, d: &WheelDelta) -> Result<(), OutputError>; fn key(&mut self, k: &KeyCombo) -> Result<(), OutputError>` | `daemon::uinput::UinputEmitter` (over any `turnstile_client::Session`), `RecordingEmitter` |
 | `Setting` (`config::lenient`) | `fn read(v: &toml::Value, key: &str, warn: &mut Vec<Warning>) -> Option<Self>` | every unit newtype, enum and `Action` (through `settings_struct!` and `serde_settings!`) |
 
 Add an implementor of `Sensor` for a new device family, of `Emitter` for a new kind of output
@@ -162,7 +163,7 @@ environment (`daemon::Env`); it is a plain struct until a fake exists.
 1. A new kind of thing written: a variant in `Out` (`tracker/out.rs`) and a method on `Emitter`
    (`outputs/mod.rs`), with its `Emitted` variant and the `RecordingEmitter` arm.
 2. `outputs/<name>.rs`: the pure model and its event encoding (tested by tables).
-3. `daemon/uinput.rs` (or `daemon/<backend>.rs` for another backend): the implementor of
+3. `daemon/uinput/emitter.rs` (or `daemon/<backend>.rs` for another backend): the implementor of
    `Emitter`; the kernel calls go through `daemon/sys.rs`.
 4. `daemon/dispatch.rs`: the `Out` arm that calls the emitter; `daemon/devices.rs` when the
    device is created lazily.
@@ -240,8 +241,9 @@ node for writing, or reads a real config directory or a running daemon.
 - **Device ids are parsed, never searched:** `HID_ID` is read as `bus:vendor:product`.
 - **No `bool` in a field, parameter or key.** A key is an enum.
 - **Feel is pinned by frozen goldens** (section 5); nothing regenerates them.
-- **Tests never create an input device:** every test writes through `RecordingEmitter`, and no
-  test reads a real config directory or a running daemon (README, "Safety rules").
+- **Tests never create an input device:** every test writes through `RecordingEmitter` or
+  `turnstile_client::fake::FakeSource`, and no test reads a real config directory, opens the
+  service's socket or touches a running daemon (README, "Safety rules").
 - **Gate** (no boundary script):
 
   ```bash
@@ -277,3 +279,33 @@ Each step keeps master green (the gate above).
 5. (done) `compare.rs` under `replay/`; rename the acceptance test files.
 6. (done) Split `feel/lock.rs` and `gestures/contacts.rs` by concept.
 7. (done) Trim `lib.rs` to declarations and the root list in section 2.
+
+## 10. The virtual devices and the input service
+
+palmrest does not own `/dev/uinput`. The input service (turnstile, a separate repository and a
+root service) does, and makes palmrest's three devices on request after checking who asks.
+
+| File (`daemon/uinput/`) | Holds |
+|---|---|
+| `emitter.rs` | `UinputEmitter<S: Session>`: asks for the touchpad or wheel `foreign_output` names, and for the keyboard only when a gesture presses keys (`Create::keys` with the deduplicated codes of `KeyCombo::codes()`). One `Session::send` per pad frame. Counts `Sent::Dropped` frames and goes on. Turns every `ClientError` into an `OutputError` in plain words, asking the session for the service's reason first |
+| `route.rs` | `Route`: a `DeviceSource` over the service and, in this release, the direct node (`Origin`, `Either`) |
+| `direct.rs` | `DirectSource`/`DirectSession`: the same `Session` over palmrest's own uinput node (`--direct-uinput`, and the fallback) |
+| `caps.rs` | each device's identity and capabilities (used by `direct.rs`) |
+| `probe.rs` | `--check-uinput`: open a session and make a touchpad |
+
+Who rebuilds, and when to stop, is `daemon/devices.rs` and nothing else. `OutputError` says what
+happened: `Unavailable` (the service is not there yet; retried without limit), `Write` (the
+device failed; rebuilt) and `Cut` (the service closed the connection, refused palmrest or timed
+out; counted). After a cut the devices are rebuilt with the 1 s, 2 s, 4 s, 5 s backoff, three
+times; a fourth cut in a row, with no frame going through between, ends the virtual devices with
+one line in the log that carries the service's reason. A change of settings that changes what the
+devices must be tries again. The socket stream to shell-host is unaffected throughout.
+
+A key combination the service denies (a key that types text with no ctrl, alt or super) is
+reported when the settings are read (`Action::read`, `Key::needs_a_shortcut_modifier`). That
+predicate mirrors the service's key classes (`turnstile-wire`'s `keytable`); a test here pins
+which names are free, and the service's tests fail when `keys::NAMES` has a code it lacks.
+
+Transition: this release prefers the service and falls back to the node when the service is
+absent and the node opens (`Route::ServiceThenNode`). The next release deletes that arm and
+`Origin::Service` becomes the service alone; `--direct-uinput` (`Route::Node`) stays.

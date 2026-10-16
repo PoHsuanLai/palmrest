@@ -13,7 +13,7 @@ shell dependency. Pointer motion and physical clicks stay in the kernel driver.
 node ──read──► Sensor::decode ──► stamp ──► Tracker::step ──► Vec<Out> ──► dispatch
      (bytes)   (Vec<Frame>, mm)   (time)    (pure state)              │
                                                                    ├─ Host(ToHost) ─► socket thread ─► subscribers
-                                                                   ├─ Pad / Wheel / Key ─► Emitter (uinput)
+                                                                   ├─ Pad / Wheel / Key ─► Emitter ─► input service (turnstile)
                                                                    └─ Action ─► action::plan ─► spawn
 subscribers ── PointerOver ──► socket thread ── claim ──► Tracker::claim (silences foreign outputs)
 subscribers ── SessionLock ──► socket thread ── lock ──► Tracker::with_session_lock (no gesture keys or actions)
@@ -53,7 +53,7 @@ sensor's millimetres feel the same per millimetre.
 | `config` | `gestures.toml`, lenient per key, the watch |
 | `outputs` | the `Emitter` seam, `RecordingEmitter`, the virtual touchpad model, evdev event encoding |
 | `recording`, `replay` | the `palmrest record` file (v1 hidraw, v2 any sensor) and the replay used by every acceptance test |
-| `daemon` | threads, socket, discovery and backoff, the sensor node (hidraw or evdev), devices, record, latency, the uinput emitter, and `sys`: the ioctls, the only module allowed `unsafe` |
+| `daemon` | threads, socket, discovery and backoff, the sensor node (hidraw or evdev), devices, record, latency, the virtual-device emitter over the input service (and the direct fallback), and `sys`: the ioctls, the only module allowed `unsafe` |
 
 ## Sensors
 
@@ -111,11 +111,17 @@ host applies natural scrolling. Every `MayBegin` is closed by exactly one `Ended
 
 palmrest drives the user's only pointing device, so:
 
-- **Tests never create an input device.** Every test writes through `RecordingEmitter`. The
-  uinput emitter is compiled and reviewed, and its event sequences are the tested `events`
-  functions, but nothing in the suite constructs it.
-- `palmrest --check-uinput` opens and closes `/dev/uinput` without `UI_DEV_CREATE`, and only
-  when `PALMREST_ALLOW_UINPUT_PROBE=1` is set.
+- **Tests never create an input device.** Every test writes through `RecordingEmitter`, or
+  through the input service's fake (`turnstile_client::fake::FakeSource`) for the code that
+  talks to the service. The real service and the real uinput node are never opened by a test.
+- **palmrest cannot type.** The virtual keyboard comes from the input service, which sends
+  palmrest's key presses on only while ctrl, alt or super is held for a letter, digit,
+  punctuation, Enter, Space, Tab, Backspace, Delete or Escape. A gesture mapped to such a key
+  on its own (`enter`, `shift+t`) is warned about in the log when the settings are read and does
+  nothing. Navigation and function keys go out as they are.
+- `palmrest --check-uinput` asks the service for a touchpad and lets it go (it opens a session
+  and makes a device; nothing else). `--direct-uinput` makes the devices without the service,
+  for development on a machine that has none.
 - `palmrest record` opens the hidraw node read-only and stops after 20 s without a touch.
 - palmrest never changes kernel module parameters, udev rules or `/etc/modprobe.d`; the
   install script prints the root steps instead of running them. With `emulate_scroll_wheel=0`
@@ -127,21 +133,29 @@ palmrest drives the user's only pointing device, so:
 ./install.sh
 ```
 
-`install.sh` builds a release binary, installs it to `~/.local/bin`, installs
-`dist/palmrest.service` as a user unit and enables it. Three system files need root, and the
-script prints the commands for them (with `sudo`, `doas` or `pkexec`, whichever is found; `$SUDO`
-overrides) rather than running them. `--prefix P` installs a packaged layout under P (the user unit
+`install.sh` builds a release binary, installs it to `/usr/local/bin` (a root-owned file: the
+input service serves only a palmrest that only root can change, so the copy goes through `sudo`,
+`doas` or `pkexec`, whichever is found; `$SUDO` overrides), installs `dist/palmrest.service` as a
+user unit and enables it. The unit passes no library-path variables from the user's manager to
+the daemon (`UnsetEnvironment=`). Three system files need root, and the script prints the
+commands for them rather than running them. `--prefix P` installs a packaged layout under P (the user unit
 in `P/lib/systemd/user`, the system files in `P/lib/udev/rules.d`, `P/lib/modprobe.d` and
 `P/lib/modules-load.d`) and `--destdir D` stages it under D without root or systemd:
 
 - `dist/70-palmrest.rules` to `/etc/udev/rules.d/`: for the active session (`uaccess`), read
-  access to the Magic Mouse 2's hidraw node and write access to `/dev/uinput` for palmrest's
-  virtual devices.
+  access to the Magic Mouse 2's hidraw node. There is no rule for `/dev/uinput`: the desktop
+  installs the input service (turnstile), which owns that node and makes palmrest's devices.
+  palmrest on its own, without the desktop, runs only with `--direct-uinput` and a `/dev/uinput` you
+  have made writable for yourself.
 - `dist/99-palmrest.conf` to `/etc/modprobe.d/`: `hid_magicmouse` keeps the pointer and clicks
   (`emulate_3button=1`) and stops its own wheel emulation (`emulate_scroll_wheel=0`), because
   palmrest scrolls.
 - `dist/palmrest-modules.conf` to `/etc/modules-load.d/palmrest.conf`: loads `uinput` at boot, so
-  `/dev/uinput` exists on Ubuntu and Arch too.
+  `/dev/uinput` exists on Ubuntu and Arch too (the input service ships the same line).
+
+**This release still falls back.** When the input service is not running and `/dev/uinput` can be
+opened, palmrest makes its devices itself and says so in the log. The next release removes that
+fallback; `--direct-uinput` stays for development.
 
 ## Retiring the Python daemon
 
@@ -185,7 +199,8 @@ palmrest record FILE [SECONDS]              # raw reads of device.source + monot
 palmrest replay FILE                        # the outputs a recording produces, one JSON line each
 palmrest replay FILE --latency              # decode-to-bytes latency percentiles
 palmrest replay FILE --curve mac-like       # cumulative px and peak gain under both curves
-PALMREST_ALLOW_UINPUT_PROBE=1 palmrest --check-uinput
+palmrest --check-uinput                     # can palmrest get its virtual devices?
+palmrest --direct-uinput                    # run the daemon without the input service (development)
 ```
 
 ## Manual checks

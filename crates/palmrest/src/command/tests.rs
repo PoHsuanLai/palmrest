@@ -1,6 +1,6 @@
 //! Argument parsing.
 
-use super::{Command, DEFAULT_RECORD, ReplayReport, parse};
+use super::{Command, DEFAULT_RECORD, Origin, ReplayReport, parse};
 use crate::replay::Timing;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -16,7 +16,20 @@ fn replay(report: ReplayReport, timing: Timing) -> Option<Command> {
 #[test]
 fn arguments_parse_to_commands() {
     let cases: &[(&str, &[&str], Option<Command>)] = &[
-        ("no arguments run the daemon", &[], Some(Command::Daemon)),
+        (
+            "no arguments run the daemon on the input service",
+            &[],
+            Some(Command::Daemon {
+                origin: Origin::Service,
+            }),
+        ),
+        (
+            "the direct flag runs it without the service",
+            &["--direct-uinput"],
+            Some(Command::Daemon {
+                origin: Origin::Direct,
+            }),
+        ),
         (
             "record without a length",
             &["record", "f"],
@@ -56,7 +69,20 @@ fn arguments_parse_to_commands() {
         ),
         ("an unknown curve", &["replay", "f", "--curve", "x"], None),
         ("a curve with no name", &["replay", "f", "--curve"], None),
-        ("probe", &["--check-uinput"], Some(Command::CheckUinput)),
+        (
+            "probe",
+            &["--check-uinput"],
+            Some(Command::CheckUinput {
+                origin: Origin::Service,
+            }),
+        ),
+        (
+            "probe without the service",
+            &["--check-uinput", "--direct-uinput"],
+            Some(Command::CheckUinput {
+                origin: Origin::Direct,
+            }),
+        ),
         (
             "print config",
             &["--print-config"],
