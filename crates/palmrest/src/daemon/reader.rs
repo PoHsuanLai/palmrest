@@ -1,7 +1,7 @@
 //! The reader thread: the sensor's node in, tracker, outputs out (12.3.12). One loop, no async
 //! runtime.
 
-use super::devices::Devices;
+use super::devices::{Devices, Health};
 use super::discover::Backoff;
 use super::dispatch::dispatch;
 use super::hidraw::{self, Read};
@@ -128,6 +128,12 @@ impl Reader {
 
     fn emit(mut self, outs: Vec<Out>) -> Self {
         dispatch(outs, &self.socket, &mut self.devices, self.desktop);
-        self
+        match self.devices.take_health() {
+            Health::Fine => self,
+            Health::LostDevices => Self {
+                tracker: self.tracker.devices_lost(),
+                ..self
+            },
+        }
     }
 }

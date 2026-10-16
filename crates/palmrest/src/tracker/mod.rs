@@ -123,6 +123,15 @@ impl Tracker {
         )
     }
 
+    /// The virtual devices were lost and rebuilt: nothing is down on them any more, so the pad
+    /// and a running glide are forgotten without writing anything.
+    pub fn devices_lost(self) -> Self {
+        Self {
+            foreign: foreign::Foreign::default(),
+            ..self
+        }
+    }
+
     /// Time passed with no report: a delayed touchpad lift or a glide frame that has come due.
     pub fn tick(self, now: Mono) -> (Self, Vec<Out>) {
         let (foreign, out) = self.foreign.tick(now, self.claimed, &self.cfg);

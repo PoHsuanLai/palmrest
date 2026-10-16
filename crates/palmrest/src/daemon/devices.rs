@@ -33,7 +33,21 @@ impl Shape {
 
 enum State {
     Ready(Box<dyn Emitter>),
-    Waiting { retry_at: Mono, backoff: Backoff },
+    /// A write failed (the device was destroyed, the module reloaded): the next `poll` starts
+    /// the wait for a rebuilt one.
+    Lost,
+    Waiting {
+        retry_at: Mono,
+        backoff: Backoff,
+    },
+}
+
+/// Whether the devices were lost since the reader last asked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Health {
+    Fine,
+    /// A write failed. What the tracker believes is down on the virtual devices is not.
+    LostDevices,
 }
 
 /// The emitter, or the wait for one.
@@ -41,6 +55,7 @@ pub struct Devices {
     factory: Factory,
     shape: Shape,
     state: State,
+    health: Health,
 }
 
 impl Devices {
@@ -53,6 +68,7 @@ impl Devices {
             factory,
             shape: Shape::of(c),
             state: waiting,
+            health: Health::Fine,
         }
         .poll(now)
     }
@@ -71,8 +87,26 @@ impl Devices {
         self.poll(now)
     }
 
-    /// Tries again if a retry is due.
+    /// Whether a write failed since the last call; asking resets it.
+    pub fn take_health(&mut self) -> Health {
+        std::mem::replace(&mut self.health, Health::Fine)
+    }
+
+    /// Starts the wait after a failed write, and tries again if a retry is due. A rebuilt
+    /// device is not tried before the first backoff delay, so a device that is created but
+    /// cannot be written is rebuilt once a second at most.
     pub fn poll(mut self, now: Mono) -> Self {
+        if let State::Lost = self.state {
+            let (delay, backoff) = Backoff::UINPUT.step();
+            self.state = State::Waiting {
+                retry_at: now.after(delay),
+                backoff,
+            };
+            eprintln!(
+                "palmrest: virtual input lost; rebuilding in {}s",
+                delay.as_secs()
+            );
+        }
         if let State::Waiting { retry_at, backoff } = self.state {
             if now < retry_at {
                 return self;
@@ -96,26 +130,36 @@ impl Devices {
     }
 }
 
+impl Devices {
+    /// Runs `write` on the ready emitter. A failure drops the emitter (which destroys its
+    /// devices) and is returned once; frames meanwhile are dropped without a message.
+    fn write(
+        &mut self,
+        write: impl FnOnce(&mut dyn Emitter) -> Result<(), OutputError>,
+    ) -> Result<(), OutputError> {
+        let State::Ready(emitter) = &mut self.state else {
+            return Ok(());
+        };
+        let result = write(emitter.as_mut());
+        if result.is_err() {
+            self.state = State::Lost;
+            self.health = Health::LostDevices;
+        }
+        result
+    }
+}
+
 impl Emitter for Devices {
     fn pad(&mut self, f: &PadFrame) -> Result<(), OutputError> {
-        match &mut self.state {
-            State::Ready(e) => e.pad(f),
-            State::Waiting { .. } => Ok(()),
-        }
+        self.write(|e| e.pad(f))
     }
 
     fn wheel(&mut self, d: &WheelDelta) -> Result<(), OutputError> {
-        match &mut self.state {
-            State::Ready(e) => e.wheel(d),
-            State::Waiting { .. } => Ok(()),
-        }
+        self.write(|e| e.wheel(d))
     }
 
     fn key(&mut self, k: &KeyCombo) -> Result<(), OutputError> {
-        match &mut self.state {
-            State::Ready(e) => e.key(k),
-            State::Waiting { .. } => Ok(()),
-        }
+        self.write(|e| e.key(k))
     }
 }
 
@@ -157,5 +201,55 @@ mod tests {
         };
         let _ = d.reconfigure(&wheel, Mono::from_millis(1200));
         assert_eq!(calls.get(), 3);
+    }
+
+    /// An emitter whose every write fails, as a destroyed uinput device does.
+    struct Destroyed;
+
+    impl Emitter for Destroyed {
+        fn pad(&mut self, _: &PadFrame) -> Result<(), OutputError> {
+            Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
+        }
+        fn wheel(&mut self, _: &WheelDelta) -> Result<(), OutputError> {
+            Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
+        }
+        fn key(&mut self, _: &KeyCombo) -> Result<(), OutputError> {
+            Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
+        }
+    }
+
+    #[test]
+    fn a_failed_write_rebuilds_the_devices_and_reports_the_loss_once() {
+        let built = Rc::new(Cell::new(0));
+        let b = built.clone();
+        let factory: Factory = Box::new(move |_, _| {
+            b.set(b.get() + 1);
+            if b.get() == 1 {
+                Ok(Box::new(Destroyed))
+            } else {
+                Ok(Box::new(RecordingEmitter::default()))
+            }
+        });
+        let mut d = Devices::new(factory, &Config::default(), Mono(0));
+        assert_eq!(built.get(), 1);
+        assert_eq!(d.take_health(), Health::Fine);
+
+        assert!(
+            d.wheel(&WheelDelta::default()).is_err(),
+            "the failure is returned once"
+        );
+        assert_eq!(d.take_health(), Health::LostDevices);
+        assert_eq!(d.take_health(), Health::Fine, "asking resets it");
+        assert!(
+            d.wheel(&WheelDelta::default()).is_ok(),
+            "frames while rebuilding are dropped without another error"
+        );
+
+        let d = d.poll(Mono::from_millis(10));
+        assert_eq!(built.get(), 1, "not before the backoff");
+        let mut d = d.poll(Mono::from_millis(1010));
+        assert_eq!(built.get(), 2, "rebuilt once the delay has passed");
+        assert!(d.wheel(&WheelDelta::default()).is_ok());
+        assert_eq!(d.take_health(), Health::Fine);
     }
 }
