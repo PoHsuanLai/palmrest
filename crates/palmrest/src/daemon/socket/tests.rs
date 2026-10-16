@@ -3,10 +3,10 @@
 
 use super::limits::{MAX_CLIENTS, PACKETS_PER_PASS, QUEUE_MAX};
 use super::server::{Flow, Server};
-use super::{SocketHandle, ToSocket, aggregate, bind, spawn};
+use super::{FromSocket, SocketHandle, ToSocket, aggregate, aggregate_lock, bind, spawn};
 use palmrest_protocol::{
-    self as protocol, ActiveTouch, DeviceInfo, Filter, Over, PROTOCOL_VERSION, TapKind, ToDaemon,
-    ToHost, Topic,
+    self as protocol, ActiveTouch, DeviceInfo, Filter, LockState, Over, PROTOCOL_VERSION, TapKind,
+    ToDaemon, ToHost, Topic,
 };
 use rustix::event::{EventfdFlags, eventfd};
 use rustix::fd::OwnedFd;
@@ -17,6 +17,15 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
+
+#[test]
+fn any_lock_wins() {
+    assert_eq!(aggregate_lock([]), LockState::Unlocked);
+    assert_eq!(
+        aggregate_lock([LockState::Unlocked, LockState::Locked]),
+        LockState::Locked
+    );
+}
 
 #[test]
 fn any_claim_wins() {
@@ -102,7 +111,10 @@ fn hello_fanout_filters_and_claims() {
     );
 
     send(&a, &ToDaemon::PointerOver { over: Over::Ours });
-    assert_eq!(claims.recv_timeout(Duration::from_secs(2)), Ok(Over::Ours));
+    assert_eq!(
+        claims.recv_timeout(Duration::from_secs(2)),
+        Ok(FromSocket::Pointer(Over::Ours))
+    );
 
     std::thread::sleep(Duration::from_millis(50)); // let b's Subscribe land before the fan-out
     let touches = ToHost::Touches {
@@ -121,7 +133,7 @@ fn hello_fanout_filters_and_claims() {
     drop(a);
     assert_eq!(
         claims.recv_timeout(Duration::from_secs(2)),
-        Ok(Over::NotOurs),
+        Ok(FromSocket::Pointer(Over::NotOurs)),
         "a leaving releases its claim"
     );
     std::fs::remove_dir_all(&dir).unwrap();
@@ -131,7 +143,7 @@ fn hello_fanout_filters_and_claims() {
 struct Stepped {
     server: Server,
     handle: SocketHandle,
-    claims: Receiver<Over>,
+    claims: Receiver<FromSocket>,
     dir: PathBuf,
 }
 
@@ -235,7 +247,7 @@ fn a_flood_is_read_a_budget_at_a_time() {
         "the last packet waits for the next pass"
     );
     assert_eq!(s.server.step(), Flow::Continue);
-    assert_eq!(s.claims.try_recv(), Ok(Over::Ours));
+    assert_eq!(s.claims.try_recv(), Ok(FromSocket::Pointer(Over::Ours)));
 }
 
 #[test]
@@ -246,4 +258,40 @@ fn a_full_queue_drops_messages_instead_of_blocking_the_reader() {
         s.handle.send(ToSocket::Msg(TOUCHES));
     }
     assert_eq!(s.server.step(), Flow::Continue);
+}
+
+#[test]
+fn the_session_is_locked_while_a_subscriber_says_so() {
+    let mut s = Stepped::new("lock");
+    let shell = s.subscribe();
+    let other = s.subscribe();
+    let tell = |fd: &OwnedFd, state| {
+        rustix::net::send(
+            fd,
+            &protocol::encode(&ToDaemon::SessionLock { state }),
+            SendFlags::NOSIGNAL,
+        )
+        .unwrap();
+    };
+    tell(&shell, LockState::Locked);
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(
+        s.claims.try_recv(),
+        Ok(FromSocket::Session(LockState::Locked))
+    );
+
+    tell(&other, LockState::Unlocked);
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert!(
+        s.claims.try_recv().is_err(),
+        "another subscriber cannot unlock it"
+    );
+
+    drop(shell);
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(
+        s.claims.try_recv(),
+        Ok(FromSocket::Session(LockState::Unlocked)),
+        "a subscriber that leaves stops saying it"
+    );
 }

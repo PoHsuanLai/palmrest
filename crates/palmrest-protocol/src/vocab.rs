@@ -50,3 +50,13 @@ pub enum Over {
     #[default]
     NotOurs,
 }
+
+/// Whether the person's session is locked. The shell that draws the lock screen says so, because
+/// it is the one that knows; a gesture does nothing on a locked session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LockState {
+    Locked,
+    #[default]
+    Unlocked,
+}

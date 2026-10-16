@@ -16,6 +16,7 @@ node ──read──► Sensor::decode ──► stamp ──► Tracker::step 
                                                                    ├─ Pad / Wheel / Key ─► Emitter (uinput)
                                                                    └─ Action ─► action::plan ─► spawn
 subscribers ── PointerOver ──► socket thread ── claim ──► Tracker::claim (silences foreign outputs)
+subscribers ── SessionLock ──► socket thread ── lock ──► Tracker::with_session_lock (no gesture keys or actions)
 gestures.toml ── inotify, 30 ms debounce ──► Tracker::with_config
 ```
 
@@ -26,7 +27,10 @@ driver) turns reads into millimetre `Frame`s, and everything after it is device-
 
 Two threads and no async runtime: the **reader** (poll on the sensor's fd, read, decode, step,
 emit, and every housekeeping step between reads) and the **socket** thread (accept, fan-out,
-`PointerOver` aggregation), woken by an eventfd so the reader never waits on a subscriber.
+`PointerOver` and `SessionLock` aggregation), woken by an eventfd so the reader never waits on a
+subscriber. At most 8 subscribers are served; each pass reads at most 16 packets from one, and a
+subscriber is known by an id, never by its place in the list. If the socket thread cannot poll,
+the process exits and systemd restarts it (release builds abort on any panic).
 
 The pure core takes bytes and instants and returns values; nothing in it reads a clock or
 touches a device, so a recording replays to exactly the outputs the live daemon produced.
@@ -87,12 +91,17 @@ pub enum ToHost {
     Touches { active: ActiveTouch },
     DeviceGone,
 }
-pub enum ToDaemon { PointerOver { over: Over }, Subscribe { filter: Filter } }
+pub enum ToDaemon { PointerOver { over: Over }, Subscribe { filter: Filter }, SessionLock { state: LockState } }
 pub enum Filter { All, Only(Vec<Topic>) }            // Topic: Scroll | Swipe | Tap | Touches
 pub struct DeviceInfo { name: String, path: String, vendor: u16, product: u16 }
 // Phase: MayBegin | Began | Changed | Ended | Cancelled;  Axis: X | Y;  TapKind: One | Two
-// ActiveTouch: Down | Up;  Over: Ours | NotOurs;  GestureId(u32)
+// ActiveTouch: Down | Up;  Over: Ours | NotOurs;  LockState: Locked | Unlocked;  GestureId(u32)
 ```
+
+`SessionLock` is the lock screen's state: the shell that draws it sends `Locked` when it locks and
+`Unlocked` when it opens, and again after connecting. The session counts as locked while any
+subscriber says so, and a subscriber that disconnects stops saying it. While locked no gesture
+runs a key or a desktop action; scrolling and the stream to subscribers go on.
 
 Scroll px are in finger direction (+x right, +y toward the user) with every gain applied; the
 host applies natural scrolling. Every `MayBegin` is closed by exactly one `Ended` or

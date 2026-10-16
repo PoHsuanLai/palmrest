@@ -5,7 +5,7 @@ use super::devices::{Devices, Health};
 use super::discover::Backoff;
 use super::dispatch::dispatch;
 use super::hidraw::{self, Read};
-use super::socket::{SocketHandle, ToSocket};
+use super::socket::{FromSocket, SocketHandle, ToSocket};
 use super::source::{self, Opened, Purpose};
 use crate::action::Desktop;
 use crate::config::Loaded;
@@ -13,7 +13,6 @@ use crate::recording::Record;
 use crate::replay::{Timing, feed_from};
 use crate::stamp::StampClock;
 use crate::tracker::{Out, Tracker};
-use palmrest_protocol::Over;
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
 
@@ -25,7 +24,7 @@ pub const IDLE_POLL: Duration = Duration::from_millis(100);
 /// Everything the reader owns.
 pub struct Reader {
     pub socket: SocketHandle,
-    pub claims: Receiver<Over>,
+    pub notes: Receiver<FromSocket>,
     pub configs: Receiver<Loaded>,
     pub devices: Devices,
     pub desktop: Desktop,
@@ -103,7 +102,7 @@ impl Reader {
         s
     }
 
-    /// Applies reloaded configuration, claim changes and a due device retry.
+    /// Applies reloaded configuration, claim and lock changes and a due device retry.
     fn housekeeping(mut self) -> Self {
         let now = hidraw::now();
         while let Ok(loaded) = self.configs.try_recv() {
@@ -114,8 +113,14 @@ impl Reader {
             self.devices = self.devices.reconfigure(&loaded.config, now);
             self.tracker = self.tracker.with_config(loaded.config);
         }
-        while let Ok(over) = self.claims.try_recv() {
-            self = self.with_tracker(|t| t.claim(over));
+        while let Ok(note) = self.notes.try_recv() {
+            self = match note {
+                FromSocket::Pointer(over) => self.with_tracker(|t| t.claim(over)),
+                FromSocket::Session(lock) => Self {
+                    tracker: self.tracker.with_session_lock(lock),
+                    ..self
+                },
+            };
         }
         self.devices = self.devices.poll(now);
         self

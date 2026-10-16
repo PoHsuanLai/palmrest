@@ -47,8 +47,8 @@ pub fn run(env: &Env) -> Result<(), String> {
         .ok_or("XDG_RUNTIME_DIR is not set")?;
     let path = socket::default_path(runtime);
     let listener = socket::bind(&path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let (claims_tx, claims_rx) = mpsc::channel();
-    let socket = socket::spawn(listener, claims_tx).map_err(|e| format!("socket thread: {e}"))?;
+    let (notes_tx, notes_rx) = mpsc::channel();
+    let socket = socket::spawn(listener, notes_tx).map_err(|e| format!("socket thread: {e}"))?;
     eprintln!("palmrest: listening on {}", path.display());
     let factory: Factory = Box::new(|foreign, combos| {
         Ok(Box::new(UinputEmitter::create(foreign, combos)?) as Box<dyn Emitter>)
@@ -56,7 +56,7 @@ pub fn run(env: &Env) -> Result<(), String> {
     let now = hidraw::now();
     let reader = reader::Reader {
         socket,
-        claims: claims_rx,
+        notes: notes_rx,
         configs: config_rx,
         devices: Devices::new(factory, &loaded.config, now),
         desktop: env.desktop,

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::vocab::{ActiveTouch, Axis, GestureId, Over, Phase, TapKind};
+use crate::vocab::{ActiveTouch, Axis, GestureId, LockState, Over, Phase, TapKind};
 
 /// The mouse palmrest is reading.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,4 +96,8 @@ pub enum ToDaemon {
     PointerOver { over: Over },
     /// Narrows what this connection receives; the default is everything.
     Subscribe { filter: Filter },
+    /// The lock screen's state, sent when it changes and after connecting while locked. The
+    /// session counts as locked while any connection says so; a connection that closes stops
+    /// saying it.
+    SessionLock { state: LockState },
 }

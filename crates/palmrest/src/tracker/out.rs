@@ -5,7 +5,7 @@ use crate::config::G4Mode;
 use crate::feel::WheelDelta;
 use crate::keys::KeyCombo;
 use crate::outputs::pad::PadFrame;
-use palmrest_protocol::{Over, TapKind, ToHost};
+use palmrest_protocol::{LockState, Over, TapKind, ToHost};
 use serde::{Deserialize, Serialize};
 
 /// One effect of a report, in the order it must happen.
@@ -62,6 +62,19 @@ pub fn tap_outs(kind: TapKind, action: &Action, claimed: Over, t_ns: u64) -> Vec
         .collect()
 }
 
+/// `outs` without the keys and desktop actions a gesture fired, while the session is locked:
+/// they would reach the lock screen or run the person's commands on a locked machine. Messages
+/// to the shell and the scroll devices stay.
+pub fn while_unlocked(session: LockState, outs: Vec<Out>) -> Vec<Out> {
+    match session {
+        LockState::Unlocked => outs,
+        LockState::Locked => outs
+            .into_iter()
+            .filter(|o| !matches!(o, Out::Key(_) | Out::Action(_)))
+            .collect(),
+    }
+}
+
 /// The gesture for a double-tap kind.
 pub fn tap_gesture(kind: TapKind) -> Gesture {
     match kind {
@@ -104,6 +117,20 @@ mod tests {
         assert_eq!(
             action_outs(&back, Source::Other, Over::Ours, G4Mode::Native),
             key
+        );
+    }
+
+    #[test]
+    fn a_locked_session_keeps_only_what_is_not_a_gesture_effect() {
+        let outs = vec![
+            Out::Host(ToHost::DeviceGone),
+            Out::Key(KeyCombo::alt(Key::LEFT)),
+            Out::Action(Action::WorkspaceOverview),
+        ];
+        assert_eq!(while_unlocked(LockState::Unlocked, outs.clone()), outs);
+        assert_eq!(
+            while_unlocked(LockState::Locked, outs),
+            vec![Out::Host(ToHost::DeviceGone)]
         );
     }
 

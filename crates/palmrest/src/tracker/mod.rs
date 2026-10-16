@@ -8,6 +8,7 @@ mod coast;
 mod foreign;
 mod out;
 
+use out::while_unlocked;
 pub use out::{Out, Source, action_outs, tap_gesture, tap_outs};
 
 use crate::action::Gesture;
@@ -19,7 +20,7 @@ use crate::gestures::{
 };
 use crate::sensor::{Frame, Surface, magic_mouse};
 use crate::time::Mono;
-use palmrest_protocol::{ActiveTouch, Over, ToHost};
+use palmrest_protocol::{ActiveTouch, LockState, Over, ToHost};
 
 /// Every piece of gesture state between reports.
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +36,7 @@ pub struct Tracker {
     tap: TapG,
     foreign: foreign::Foreign,
     claimed: Over,
+    session: LockState,
     peak_gain: f64,
     touching: ActiveTouch,
 }
@@ -59,6 +61,7 @@ impl Tracker {
             tap: TapG::Idle,
             foreign: foreign::Foreign::default(),
             claimed: Over::NotOurs,
+            session: LockState::Unlocked,
             peak_gain: 1.0,
             touching: ActiveTouch::Up,
         }
@@ -87,6 +90,12 @@ impl Tracker {
     /// The scroll lock decision after the last report (for parity comparison).
     pub fn lock(&self) -> Lock {
         self.scroll.lock()
+    }
+
+    /// The lock screen's state, as the shell last said it. While the session is locked no
+    /// gesture runs a key or a desktop action; scrolling and the socket stream go on.
+    pub fn with_session_lock(self, session: LockState) -> Self {
+        Self { session, ..self }
     }
 
     /// Who holds the pointer.
@@ -273,6 +282,7 @@ impl Tracker {
                 now.0,
             ));
         }
+        let out = while_unlocked(self.session, out);
         (
             Self {
                 one,

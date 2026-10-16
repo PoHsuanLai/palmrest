@@ -1,6 +1,7 @@
 //! O1: the socket thread (12.3.10). Accepts subscribers, fans messages out, and turns their
 //! `PointerOver` reports into the one claim the tracker needs (11.3.14: while any subscriber
-//! has the pointer, foreign outputs are silent).
+//! has the pointer, foreign outputs are silent), and their `SessionLock` reports into whether
+//! the session is locked (a locked session runs no gesture action).
 //!
 //! The reader thread hands messages over a bounded channel and wakes this thread with an
 //! eventfd, so the reader never blocks on a slow subscriber: a subscriber whose queue is full
@@ -13,7 +14,7 @@ mod limits;
 mod server;
 
 use limits::QUEUE_MAX;
-use palmrest_protocol::{DeviceInfo, Over, ToHost};
+use palmrest_protocol::{DeviceInfo, LockState, Over, ToHost};
 use rustix::event::{EventfdFlags, eventfd};
 use rustix::fd::OwnedFd;
 use rustix::net::{AddressFamily, SocketAddrUnix, SocketFlags, SocketType};
@@ -36,6 +37,15 @@ pub enum ToSocket {
     Gone,
     /// A message for every admitting subscriber.
     Msg(ToHost),
+}
+
+/// What the socket thread tells the reader: the subscribers' joint state, when it changes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FromSocket {
+    /// The pointer is over a subscriber's surface, or not (11.3.14).
+    Pointer(Over),
+    /// A subscriber says the session is locked, or none does any more.
+    Session(LockState),
 }
 
 /// The reader's end: a channel plus the eventfd that wakes the socket thread.
@@ -67,6 +77,15 @@ pub fn aggregate(overs: impl IntoIterator<Item = Over>) -> Over {
     }
 }
 
+/// The session is locked if any subscriber says so; one that disconnects stops saying it.
+pub fn aggregate_lock(locks: impl IntoIterator<Item = LockState>) -> LockState {
+    if locks.into_iter().any(|l| l == LockState::Locked) {
+        LockState::Locked
+    } else {
+        LockState::Unlocked
+    }
+}
+
 /// `$XDG_RUNTIME_DIR/palmrest/events.sock`.
 pub fn default_path(runtime_dir: &Path) -> PathBuf {
     runtime_dir.join("palmrest").join("events.sock")
@@ -94,13 +113,13 @@ pub fn bind(path: &Path) -> io::Result<OwnedFd> {
     Ok(fd)
 }
 
-/// Starts the socket thread on a bound listener. Claims go to `claims`. If the thread can no
+/// Starts the socket thread on a bound listener. The joint state goes to `notes`. If the thread can no
 /// longer wait for events the process exits, so the unit restarts instead of running on with a
 /// dead socket.
-pub fn spawn(listener: OwnedFd, claims: Sender<Over>) -> io::Result<SocketHandle> {
+pub fn spawn(listener: OwnedFd, notes: Sender<FromSocket>) -> io::Result<SocketHandle> {
     let wake = Arc::new(eventfd(0, EventfdFlags::CLOEXEC | EventfdFlags::NONBLOCK)?);
     let (tx, rx) = mpsc::sync_channel(QUEUE_MAX);
-    let server = Server::new(listener, wake.clone(), rx, claims);
+    let server = Server::new(listener, wake.clone(), rx, notes);
     std::thread::Builder::new()
         .name("palmrest-socket".to_owned())
         .spawn(move || {

@@ -51,6 +51,9 @@ fn every_message_round_trips() {
         ToDaemon::Subscribe {
             filter: Filter::Only(vec![Topic::Scroll, Topic::Touches]),
         },
+        ToDaemon::SessionLock {
+            state: LockState::Locked,
+        },
     ] {
         assert_eq!(decode::<ToDaemon>(&encode(&m)).unwrap(), m);
     }

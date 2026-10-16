@@ -9,7 +9,7 @@ use palmrest::recording::Record;
 use palmrest::replay::{Timing, feed, outs, replay};
 use palmrest::stamp::StampClock;
 use palmrest::{Out, Tracker};
-use palmrest_protocol::{Axis, Over, Phase, TapKind, ToHost};
+use palmrest_protocol::{Axis, LockState, Over, Phase, TapKind, ToHost};
 
 fn run(name: &str) -> Vec<Out> {
     outs(&replay(
@@ -21,7 +21,19 @@ fn run(name: &str) -> Vec<Out> {
 
 /// Replays with a host holding the pointer from the start.
 fn run_claimed(name: &str) -> Vec<Out> {
-    let (mut t, _) = Tracker::new(Config::default()).claim(Over::Ours);
+    let (t, _) = Tracker::new(Config::default()).claim(Over::Ours);
+    run_from(t, name)
+}
+
+/// Replays with the session locked from the start.
+fn run_locked(name: &str) -> Vec<Out> {
+    run_from(
+        Tracker::new(Config::default()).with_session_lock(LockState::Locked),
+        name,
+    )
+}
+
+fn run_from(mut t: Tracker, name: &str) -> Vec<Out> {
     let mut clock = StampClock::new();
     let mut all = Vec::new();
     for r in &crate::support::load(name) {
@@ -179,6 +191,26 @@ fn one_finger_swipe() {
     assert!(
         keys(&run_claimed("g4_fast")).is_empty(),
         "no G4 keys while a host holds the pointer"
+    );
+}
+
+#[test]
+fn a_locked_session_runs_no_gesture_effect() {
+    for name in ["swipe_200_right", "tap_two_double", "g4_fast"] {
+        let free = run(name);
+        assert!(
+            !actions(&free).is_empty() || !keys(&free).is_empty(),
+            "{name}: the unlocked run fires something"
+        );
+        let locked = run_locked(name);
+        assert!(
+            actions(&locked).is_empty() && keys(&locked).is_empty(),
+            "{name}: {locked:?}"
+        );
+    }
+    assert!(
+        crate::support::scrolled(&run_locked("g4_fast")).0 > 0.0,
+        "scrolling goes on"
     );
 }
 

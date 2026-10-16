@@ -1,7 +1,7 @@
-//! One subscriber: its descriptor, what it asked to receive and what it said about the pointer.
+//! One subscriber: its descriptor, what it asked to receive and what it said about the pointer and the lock screen.
 
 use super::limits::PACKETS_PER_PASS;
-use palmrest_protocol::{self as protocol, Filter, Over, ToDaemon, ToHost};
+use palmrest_protocol::{self as protocol, Filter, LockState, Over, ToDaemon, ToHost};
 use rustix::fd::{AsFd, OwnedFd};
 use rustix::io::Errno;
 use rustix::net::{RecvFlags, SendFlags};
@@ -24,6 +24,7 @@ pub(super) struct Client {
     fd: OwnedFd,
     filter: Filter,
     pub(super) over: Over,
+    pub(super) lock: LockState,
 }
 
 impl Client {
@@ -33,6 +34,7 @@ impl Client {
             fd,
             filter: Filter::All,
             over: Over::NotOurs,
+            lock: LockState::Unlocked,
         }
     }
 
@@ -75,6 +77,7 @@ impl Client {
         match protocol::decode::<ToDaemon>(packet) {
             Ok(ToDaemon::PointerOver { over }) => self.over = over,
             Ok(ToDaemon::Subscribe { filter }) => self.filter = filter,
+            Ok(ToDaemon::SessionLock { state }) => self.lock = state,
             Err(e) => eprintln!("palmrest: ignoring a malformed subscriber message: {e}"),
         }
     }

@@ -1,13 +1,13 @@
 //! The socket thread's loop: one pass polls the wake-up, the listener and every subscriber,
-//! then accepts, delivers what the reader queued and reads what subscribers said. Every step
+//! then accepts, delivers what the reader queued, reads what subscribers said and publishes their joint state. Every step
 //! is bounded, so no subscriber can keep the others, or the reader's stream, waiting.
 
-use super::ToSocket;
 use super::client::{Client, ClientId, Link};
 use super::limits::{
     ACCEPTS_PER_PASS, AcceptFailure, Complaints, Intake, MAX_CLIENTS, Voice, accept_failure,
 };
-use palmrest_protocol::{DeviceInfo, Over, PROTOCOL_VERSION, ToHost};
+use super::{FromSocket, ToSocket, aggregate, aggregate_lock};
+use palmrest_protocol::{DeviceInfo, LockState, Over, PROTOCOL_VERSION, ToHost};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::fd::OwnedFd;
 use rustix::io::Errno;
@@ -67,8 +67,9 @@ pub(super) struct Server {
     intake: Intake,
     complaints: Complaints,
     device: Option<DeviceInfo>,
-    claims: Sender<Over>,
+    notes: Sender<FromSocket>,
     claim: Over,
+    lock: LockState,
 }
 
 impl Server {
@@ -76,7 +77,7 @@ impl Server {
         listener: OwnedFd,
         wake: Arc<OwnedFd>,
         rx: Receiver<ToSocket>,
-        claims: Sender<Over>,
+        notes: Sender<FromSocket>,
     ) -> Self {
         Self {
             listener,
@@ -87,8 +88,9 @@ impl Server {
             intake: Intake::Open,
             complaints: Complaints::default(),
             device: None,
-            claims,
+            notes,
             claim: Over::NotOurs,
+            lock: LockState::Unlocked,
         }
     }
 
@@ -100,7 +102,7 @@ impl Server {
         }
     }
 
-    /// One pass: wait, accept, deliver, read, publish the claim.
+    /// One pass: wait, accept, deliver, read, publish.
     pub(super) fn step(&mut self) -> Flow {
         self.intake = self.intake.at(Instant::now());
         let ready = match self.wait() {
@@ -117,7 +119,7 @@ impl Server {
             return Flow::Stop(Exit::ReaderGone);
         }
         ready.clients.into_iter().for_each(|id| self.receive(id));
-        self.publish_claim();
+        self.publish();
         Flow::Continue
     }
 
@@ -241,11 +243,17 @@ impl Server {
         }
     }
 
-    fn publish_claim(&mut self) {
-        let now = super::aggregate(self.clients.iter().map(|c| c.over));
-        if now != self.claim {
-            self.claim = now;
-            let _ = self.claims.send(now);
+    /// Tells the reader what the subscribers jointly say, when it changed.
+    fn publish(&mut self) {
+        let claim = aggregate(self.clients.iter().map(|c| c.over));
+        if claim != self.claim {
+            self.claim = claim;
+            let _ = self.notes.send(FromSocket::Pointer(claim));
+        }
+        let lock = aggregate_lock(self.clients.iter().map(|c| c.lock));
+        if lock != self.lock {
+            self.lock = lock;
+            let _ = self.notes.send(FromSocket::Session(lock));
         }
     }
 
