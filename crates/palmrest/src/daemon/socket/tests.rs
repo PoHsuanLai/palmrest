@@ -460,6 +460,11 @@ fn a_user_switch_closes_the_connections_of_the_one_who_left() {
     assert_eq!(s.server.step(), Flow::Continue);
     assert_eq!(
         s.claims.try_recv(),
+        Ok(FromSocket::UserConfig(None)),
+        "the one who left takes their settings with them"
+    );
+    assert_eq!(
+        s.claims.try_recv(),
         Ok(FromSocket::Session(LockState::Locked)),
         "the session is locked again for whoever comes next"
     );
