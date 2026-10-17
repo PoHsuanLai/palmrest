@@ -11,6 +11,7 @@ use palmrest::feel::{
 use palmrest::gestures::{FingerDirection, SwipeEvent, SwipeG};
 use palmrest::replay::{Timing, outs, replay};
 use palmrest::{Mono, Out};
+use palmrest_protocol::HostAction;
 use std::time::Duration;
 
 // ---- the case helpers ---------------------------------------------------------------------
@@ -305,7 +306,7 @@ fn two_finger_swipe_right_switches_desktop_left() {
     assert_eq!(swipe_run(&with_lift), [FingerDirection::Right]);
     // Fingers right: the desktop on the left; fingers left: the one on the right.
     let kwin = |a: &Action| match plan(a, Desktop::Kde) {
-        Effect::Spawn(argv) => argv.last().cloned().unwrap(),
+        Effect::Host(HostAction::Command { argv }) => argv.last().cloned().unwrap(),
         other => panic!("{other:?}"),
     };
     let map = Config::default().gestures.gesture_action_map;
