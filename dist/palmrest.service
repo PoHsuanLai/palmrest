@@ -1,17 +1,79 @@
+# palmrest: Magic Mouse gestures (scroll, swipes, double-taps). Install to /usr/lib/systemd/system
+# (the vendor folder; /etc stays the administrator's).
+#
+# A system service, as keycap is: the mouse's raw reports are read by the service and not by the
+# person's own programs, and the control group `/system.slice/palmrest.service` is one only the
+# system manager can fill, which is how the input service (turnstile) knows it is the genuine
+# palmrest before it makes a touchpad, a wheel and a keyboard for it.
+#
+# What it reaches. The mouse's hidraw node comes through the `input` group (dist/70-palmrest.rules
+# gives the node that group), and the virtual devices come from turnstile, so this unit has no
+# access to /dev/uinput. Its socket, /run/palmrest/events.sock, is open to every local account and
+# serves only the person at the seat; only that person's shell is believed about the lock screen.
+# Its settings are /etc/palmrest/gestures.toml.
+#
+# `After=` and `Wants=` of a unit that is not installed are ignored by systemd.
 [Unit]
 Description=palmrest: Magic Mouse gestures (scroll, swipes, double-taps)
 Documentation=https://github.com/PoHsuanLai/palmrest
-PartOf=graphical-session.target
-After=graphical-session.target
+Wants=turnstile.socket
+After=turnstile.socket
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
 # Root-owned: the input service serves only the genuine palmrest file, so nothing the user can overwrite runs here.
 ExecStart=/usr/local/bin/palmrest
-# Library-path variables from the user manager are not passed on, so no library of the user's own is loaded into this service.
+# Every loader variable the manager may carry is dropped, so the unit proves its full standing to
+# turnstile (peephole's loader list; keep in step with peephole-core LOADER_VARIABLES).
 UnsetEnvironment=LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT GCONV_PATH GIO_EXTRA_MODULES GTK_MODULES GTK_PATH GST_PLUGIN_PATH GST_PLUGIN_SYSTEM_PATH LIBGL_DRIVERS_PATH MESA_LOADER_DRIVER_OVERRIDE __EGL_VENDOR_LIBRARY_DIRS __EGL_VENDOR_LIBRARY_FILENAMES GBM_BACKENDS_PATH LIBVA_DRIVERS_PATH VK_ICD_FILENAMES VK_DRIVER_FILES VK_ADD_DRIVER_FILES VK_LAYER_PATH VK_ADD_LAYER_PATH VK_INSTANCE_LAYERS VK_LOADER_LAYERS_ENABLE
 Restart=on-failure
 RestartSec=2
+# The daemon holds a few megabytes; a client that makes it store more is killed with it, not the
+# machine's memory.
+MemoryMax=128M
+
+DynamicUser=yes
+SupplementaryGroups=input
+RuntimeDirectory=palmrest
+RuntimeDirectoryMode=0755
+ConfigurationDirectory=palmrest
+
+# Anything it creates is its own; the socket's 0666 is set explicitly.
+UMask=0077
+ProtectHome=yes
+ProtectSystem=strict
+PrivateTmp=yes
+PrivateNetwork=yes
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+# Only the events socket and the config watch (inotify).
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+# palmrest reads one thing of another process: which control group a client of its socket runs in
+# (/proc/<pid>/cgroup), to tell the desktop's shell from any other program of the person. That
+# needs the other users' processes visible, so not `invisible`; `pid` still hides everything in
+# /proc that is not a process entry.
+ProtectProc=default
+ProcSubset=pid
+RestrictSUIDSGID=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+DevicePolicy=closed
+# The mouse's raw node (read, and the one feature report that turns multitouch on) and, for
+# device.source = "evdev", the input nodes; both are read only through the `input` group.
+DeviceAllow=char-hidraw rw
+DeviceAllow=char-input r
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=multi-user.target

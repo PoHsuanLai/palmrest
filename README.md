@@ -15,7 +15,7 @@ node ──read──► Sensor::decode ──► stamp ──► Tracker::step 
                                                                    ├─ Host(ToHost) ─► socket thread ─► subscribers
                                                                    ├─ Pad / Wheel / Key ─► Emitter ─► input service (turnstile)
                                                                    └─ Action ─► action::plan ─► spawn
-subscribers ── PointerOver ──► socket thread ── claim ──► Tracker::claim (silences foreign outputs)
+the shell ── PointerOver ──► socket thread ── claim ──► Tracker::claim (silences foreign outputs)
 subscribers ── SessionLock ──► socket thread ── lock ──► Tracker::with_session_lock (no gesture keys or actions)
 gestures.toml ── inotify, 30 ms debounce ──► Tracker::with_config
 ```
@@ -28,7 +28,13 @@ driver) turns reads into millimetre `Frame`s, and everything after it is device-
 Two threads and no async runtime: the **reader** (poll on the sensor's fd, read, decode, step,
 emit, and every housekeeping step between reads) and the **socket** thread (accept, fan-out,
 `PointerOver` and `SessionLock` aggregation), woken by an eventfd so the reader never waits on a
-subscriber. At most 8 subscribers are served; each pass reads at most 16 packets from one, and a
+subscriber. palmrest is a system service (a dynamic user, as keycap is), so the socket is open
+to every local account and the socket thread decides whom to serve: only the person at the seat
+(logind's `seat0` state file, read when someone connects and once a second), and of their programs
+only the shell (the process in `sill.service` under that person's own manager, held by its pidfd,
+judged by peephole) is believed about the pointer and an unlocked session; any other program of
+theirs may subscribe and may say the session is locked. A user switch closes the old user's
+connections. At most 8 subscribers are served; each pass reads at most 16 packets from one, and a
 subscriber is known by an id, never by its place in the list. If the socket thread cannot poll,
 the process exits and systemd restarts it (release builds abort on any panic).
 
@@ -78,7 +84,7 @@ applies at the next reconnect.
 
 ### The socket protocol (O1)
 
-`$XDG_RUNTIME_DIR/palmrest/events.sock`, `SOCK_SEQPACKET`, mode 0600, one JSON message per
+`/run/palmrest/events.sock`, `SOCK_SEQPACKET`, mode 0666 (the daemon serves only the person at the seat; see Architecture), one JSON message per
 packet, adjacently tagged (`{"kind": "...", "v": {...}}`). The first packet on a connection is
 `Hello`; a client checks `version` (`PROTOCOL_VERSION = 1`) before reading on.
 
@@ -100,7 +106,9 @@ pub struct DeviceInfo { name: String, path: String, vendor: u16, product: u16 }
 
 `SessionLock` is the lock screen's state: the shell that draws it sends `Locked` when it locks and
 `Unlocked` when it opens, and again after connecting. The session counts as locked while any
-subscriber says so, and a subscriber that disconnects stops saying it. While locked no gesture
+subscriber says so, and a subscriber that disconnects stops saying it. Only the shell's `Unlocked`
+counts (another program of the person may say `Locked`, never `Unlocked`), and `PointerOver` counts
+from the shell alone. While locked no gesture
 runs a key or a desktop action; scrolling and the stream to subscribers go on.
 
 Scroll px are in finger direction (+x right, +y toward the user) with every gain applied; the
@@ -123,9 +131,11 @@ palmrest drives the user's only pointing device, so:
   and makes a device; nothing else). `--direct-uinput` makes the devices without the service,
   for development on a machine that has none.
 - `palmrest record` opens the hidraw node read-only and stops after 20 s without a touch.
-- palmrest never changes kernel module parameters, udev rules or `/etc/modprobe.d`; the
-  install script prints the root steps instead of running them. With `emulate_scroll_wheel=0`
-  the mouse scrolls only while palmrest runs.
+- The daemon never changes kernel module parameters, udev rules or `/etc/modprobe.d`; only
+  `install.sh` does, as root, and says each step first (`--dry-run` prints them all). With
+  `emulate_scroll_wheel=0` the mouse scrolls only while palmrest runs.
+- palmrest is a dynamic user with no capabilities, no network, a read-only file system and no
+  access to `/dev/uinput`; the mouse's node comes through the `input` group.
 
 ## Install
 
@@ -133,29 +143,29 @@ palmrest drives the user's only pointing device, so:
 ./install.sh
 ```
 
-`install.sh` builds a release binary, installs it to `/usr/local/bin` (a root-owned file: the
-input service serves only a palmrest that only root can change, so the copy goes through `sudo`,
-`doas` or `pkexec`, whichever is found; `$SUDO` overrides), installs `dist/palmrest.service` as a
-user unit and enables it. The unit passes no library-path variables from the user's manager to
-the daemon (`UnsetEnvironment=`). Three system files need root, and the script prints the
-commands for them rather than running them. `--prefix P` installs a packaged layout under P (the user unit
-in `P/lib/systemd/user`, the system files in `P/lib/udev/rules.d`, `P/lib/modprobe.d` and
-`P/lib/modules-load.d`) and `--destdir D` stages it under D without root or systemd:
+palmrest is a system service, like keycap. `install.sh` builds a release binary and installs, through
+`sudo`, `doas` or `pkexec` (whichever is found; `$SUDO` overrides; with none it prints the commands
+for you to run as root): the program in `/usr/local/bin` (a root-owned file: the input service
+serves only a palmrest that only root can change), `dist/palmrest.service` in `/etc/systemd/system`,
+and the three system files below; then it enables and starts the service. The unit runs as a
+dynamic user, passes no library-path variables (`UnsetEnvironment=`), and reads its settings from
+`/etc/palmrest/gestures.toml`. `--prefix P` installs a packaged layout under P (the unit in
+`P/lib/systemd/system`, the system files in `P/lib/udev/rules.d`, `P/lib/modprobe.d` and
+`P/lib/modules-load.d`) and `--destdir D` stages it under D without root or systemd. An earlier
+install ran palmrest as a service of the person; the script says how to remove that one.
 
-- `dist/70-palmrest.rules` to `/etc/udev/rules.d/`: for the active session (`uaccess`), read
-  access to the Magic Mouse 2's hidraw node. There is no rule for `/dev/uinput`: the desktop
-  installs the input service (turnstile), which owns that node and makes palmrest's devices.
-  palmrest on its own, without the desktop, runs only with `--direct-uinput` and a `/dev/uinput` you
-  have made writable for yourself.
+- `dist/70-palmrest.rules` to `/etc/udev/rules.d/`: the Magic Mouse 2's hidraw node belongs to the
+  `input` group, which the service is in, and to no person (the raw node, and the feature report
+  written to it, are not reachable from the logged-in user's programs). `palmrest record` therefore
+  needs root (or a person in `input`). There is no rule for `/dev/uinput`: the desktop installs the
+  input service (turnstile), which owns that node and makes palmrest's devices. palmrest on its own,
+  without the desktop, runs only with `--direct-uinput` and a `/dev/uinput` you have made writable
+  for yourself.
 - `dist/99-palmrest.conf` to `/etc/modprobe.d/`: `hid_magicmouse` keeps the pointer and clicks
   (`emulate_3button=1`) and stops its own wheel emulation (`emulate_scroll_wheel=0`), because
   palmrest scrolls.
 - `dist/palmrest-modules.conf` to `/etc/modules-load.d/palmrest.conf`: loads `uinput` at boot, so
   `/dev/uinput` exists on Ubuntu and Arch too (the input service ships the same line).
-
-**This release still falls back.** When the input service is not running and `/dev/uinput` can be
-opened, palmrest makes its devices itself and says so in the log. The next release removes that
-fallback; `--direct-uinput` stays for development.
 
 ## Retiring the Python daemon
 
@@ -169,7 +179,7 @@ sudo install -Dm644 dist/99-palmrest.conf /etc/modprobe.d/99-palmrest.conf
 echo 0 | sudo tee /sys/module/hid_magicmouse/parameters/emulate_scroll_wheel
 sudo udevadm control --reload-rules
 sudo udevadm trigger --subsystem-match=hidraw --subsystem-match=misc
-./install.sh                                    # builds, installs and enables palmrest
+./install.sh                                    # builds, installs and starts palmrest
 ```
 
 The `rm` repeats what `uninstall.sh` does, in case it was already removed. Then
@@ -177,7 +187,8 @@ The `rm` repeats what `uninstall.sh` does, in case it was already removed. Then
 
 ## Configuration
 
-`$XDG_CONFIG_HOME/palmrest/gestures.toml`. Every key of 22-SETTINGS §3.9/§3.10 with its
+`/etc/palmrest/gestures.toml` for the service (the unit's `ConfigurationDirectory=`), and
+`$XDG_CONFIG_HOME/palmrest/gestures.toml` for the tools a person runs. Every key of 22-SETTINGS §3.9/§3.10 with its
 default; `palmrest --print-config` prints them all, and `palmrest --write-schema DIR` writes `palmrest.settings.toml`, the schema the Settings app reads. Lengths are micrometres (`_um`); a rule
 that is anisotropic in millimetres on the mouse (a Euclidean distance, the lock threshold) has
 an `_x_um` / `_y_um` pair. A bad value costs only its own key (logged, default used); an

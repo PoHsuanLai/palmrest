@@ -132,14 +132,31 @@ Mouse 1's report 0x29); `touch.rs` (12-bit wrap of deltas, now on every sensor's
   `Kind` and `Detail`, which the direct path matches, and its stand-in is a dev-only feature.
 - *Rust 1.92.* `turnstile-client` declares `rust-version = "1.92"`, so the workspace's moved
   from 1.91. The pinned toolchain (1.98.1) already satisfies it.
-- *Who may talk to palmrest (INPUT-03, INPUT-14).* The socket is 0600 in a 0700 directory, so
-  same-uid is the whole check. Caller identity for all four same-uid channels (this socket,
-  keycap's, the focus bridge, uinput) is a later wave with one shared design.
+- *Who may talk to palmrest (INPUT-03, INPUT-14): done (2026-10-17).* palmrest is a system service
+  (owner decision), so its socket is `/run/palmrest/events.sock`, mode 0666, and the socket thread
+  serves only the person at the seat and believes only the shell (peephole, as keycap's `Steering`)
+  about the pointer and an unlocked session. The hidraw rule gives the node to the `input` group and
+  no person (INPUT-19's second half: the raw node and its feature reports are no longer reachable
+  from the logged-in user's programs).
 - *Shell side of the lock (INPUT-09).* palmrest drops gesture keys and actions while a
   subscriber says the session is locked (`SessionLock`). Nothing sends it yet: shell-host must
   send `ToDaemon::SessionLock` when the lock service reports Locked or Unlocked (interface ask in
   the lane report). Neither casement nor sill publishes a lock state a daemon outside the session
   can read, and logind's `LockedHint` is not set by sill's locker.
+- *Open after the move to a system service (2026-10-17).* Two things a user service did and a system service
+  cannot, both to be settled with the owner before the next release:
+  1. **The person's settings.** The Settings app writes `~/.config/palmrest/gestures.toml`; the service
+     (a dynamic user with `ProtectHome=yes`) reads only `/etc/palmrest/gestures.toml`. Until the shell
+     forwards the person's file (a `ToDaemon::UserConfig` message from the shell only, applied while that
+     person has the seat and cut down as keycap's `ConfigLayer::confined` does), the feel and the gesture
+     table are the machine's.
+  2. **Programs a gesture runs.** `Action::WorkspacePrev/Next`, `ShellIpc` and `Command` spawn a program
+     (`daemon::spawn`); from the system service it runs as the dynamic user, outside the person's session
+     (no session bus, no `sill` socket). Key actions (`Back`, `Forward`, `Keys`) are unaffected. The fix is
+     a `ToHost` message to the shell, which runs the action itself.
+  3. **shell-host's client.** `shell-host/crates/shell-host/src/input/palmrest.rs` must connect to
+     `/run/palmrest/events.sock` and trust a peer by its control group `/system.slice/palmrest.service`
+     (its `trust` accepts only the person's uid or root, and the service is neither).
 - *Fail safe without a shell (NEW-QDH-2, 2026-10-17).* The session counts as locked unless a subscriber has said
   Unlocked and none says Locked (`aggregate_lock`): with no subscriber connected (a shell restart, or palmrest
   restarting during a lock), or only silent ones, gesture keys and desktop actions are dropped, while pointer

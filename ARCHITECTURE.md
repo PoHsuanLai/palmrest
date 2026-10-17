@@ -13,7 +13,7 @@ the next thing. palmrest depends on no shell crate and runs on any Linux.
 | Crate | Path | Purpose | May depend on |
 |---|---|---|---|
 | `palmrest-protocol` | `crates/palmrest-protocol` | the socket contract with shell-host: `ToHost`, `ToDaemon`, their field types, `PROTOCOL_VERSION`, `MAX_PACKET`, `encode`, `decode`, `compat` | `serde`, `serde_json`, `thiserror` |
-| `palmrest` | `crates/palmrest` | the pure core, the tools that replay recordings, and the daemon; library plus the `palmrest` binary | `palmrest-protocol`, `serde`, `serde_json`, `thiserror`, `toml`, `notify`, `rustix`, `turnstile-client` (git, tag `v0.1.1`; the daemon layer only; its `fake` feature only as a dev dependency) |
+| `palmrest` | `crates/palmrest` | the pure core, the tools that replay recordings, and the daemon; library plus the `palmrest` binary | `palmrest-protocol`, `serde`, `serde_json`, `thiserror`, `toml`, `notify`, `rustix`, `turnstile-client` (git, tag `v0.1.1`; the daemon layer only; its `fake` feature only as a dev dependency), `peephole`, `peephole-core` (git, tag `v0.1.4`; the socket's shell check only; `peephole`'s `fake` feature only as a dev dependency) |
 
 Edges: `palmrest` -> `palmrest-protocol` only. `palmrest-protocol` depends on no other workspace
 crate, and has no `toml`, `notify` or `rustix`, so shell-host takes it without pulling the
@@ -100,6 +100,7 @@ decision vs lock parameters, contact tracking vs palm turn, one file per scenari
 | Replaying recordings, curve comparison | `replay`, `replay::compare` |
 | Threads, sockets, discovery, backoff, nodes | `daemon` |
 | Subscribers of the socket: ids, caps, budgets, the joint claim and lock | `daemon::socket::{server, client, limits}` |
+| Who has the seat, and what a connection is to the daemon (shell, other program, stranger) | `daemon::socket::seat` (`SeatFile`, `peer_of`), `daemon::socket::shell` (`Steering`, `ShellCheck`) |
 | Programs a gesture runs, and their reaping | `daemon::spawn` |
 | What the shell says about the lock screen | `palmrest_protocol::ToDaemon::SessionLock`, `Tracker::with_session_lock` |
 | The virtual devices: what each is, asking the input service for them, the direct fallback | `daemon::uinput::{caps, emitter, direct, route}` |
@@ -225,6 +226,13 @@ node for writing, or reads a real config directory or a running daemon.
 
 ## 7. Repo rules
 
+- **palmrest is a system service** (a dynamic user, `dist/palmrest.service`; owner decision 2026-10-17, as
+  keycap): its socket is `/run/palmrest/events.sock`, mode 0666, and `daemon::socket` serves only the person
+  at the seat. A connection is a `Peer`: the `Shell` (the process in `sill.service` under that person's own
+  manager, held by pidfd and judged by peephole), another program of the person (`Plain`: subscribes, may
+  say `Locked`, never `Unlocked`, and its `PointerOver` is ignored) or a stranger (closed at once). The
+  session counts as unlocked only while the shell says so; a user switch closes the old user's
+  connections. Its settings are `/etc/palmrest/gestures.toml`; nothing in the daemon reads a home folder.
 - **A panic ends the process** (`panic = "abort"` in release) and a socket thread that cannot poll exits it, so
   systemd restarts the unit; a daemon with a dead socket thread never keeps running.
 - **Everything a subscriber can make the socket thread store or read is capped** (`socket/limits.rs`):
