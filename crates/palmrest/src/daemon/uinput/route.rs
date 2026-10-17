@@ -2,9 +2,9 @@
 //!
 //! `Route` is itself a `DeviceSource`, so the emitter above it never knows which one it got.
 //!
-//! TRANSITION: this release prefers the service and falls back to the node when there is no
-//! service and the node can be opened, with a warning. The next release removes the fallback
-//! (and the `ServiceThenNode` arm); `--direct-uinput` stays for development. FINDINGS says so.
+//! There is no fallback from the one to the other: a machine whose input service is not running
+//! has no pad, and says so (INPUT-02). A fallback to the node would work exactly where the node
+//! is open to the logged-in user, which is what the input service exists to end.
 
 use super::direct::DirectSource;
 use turnstile_client::{
@@ -14,7 +14,7 @@ use turnstile_client::{
 /// What the command line chose.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Origin {
-    /// The input service; this release still falls back to the node when there is no service.
+    /// The input service alone.
     #[default]
     Service,
     /// The node, whatever the service says (`--direct-uinput`, for development).
@@ -61,8 +61,8 @@ impl<A: Session, B: Session> Session for Either<A, B> {
 /// The ways to get a session.
 #[derive(Debug, Clone)]
 pub enum Route<S, N> {
-    /// The service first; the node only when there is no service and the node opens.
-    ServiceThenNode { service: S, node: N },
+    /// The service alone.
+    Service(S),
     /// The node alone.
     Node(N),
 }
@@ -74,10 +74,7 @@ impl LiveRoute {
     /// The route the command line chose.
     pub fn live(origin: Origin) -> Self {
         match origin {
-            Origin::Service => Route::ServiceThenNode {
-                service: Broker::default(),
-                node: DirectSource,
-            },
+            Origin::Service => Route::Service(Broker::default()),
             Origin::Direct => Route::Node(DirectSource),
         }
     }
@@ -89,20 +86,7 @@ impl<S: DeviceSource, N: DeviceSource> DeviceSource for Route<S, N> {
     fn open(&self) -> Result<Self::Session, ClientError> {
         match self {
             Route::Node(node) => node.open().map(Either::Node),
-            Route::ServiceThenNode { service, node } => match service.open() {
-                Err(ClientError::Absent) => match node.open() {
-                    Ok(session) => {
-                        eprintln!(
-                            "palmrest: warning: the input service is not running, so palmrest \
-                             makes its virtual devices itself; the next release will not"
-                        );
-                        Ok(Either::Node(session))
-                    }
-                    // The node is closed to us as well: the missing service is the news.
-                    Err(_) => Err(ClientError::Absent),
-                },
-                other => other.map(Either::Service),
-            },
+            Route::Service(service) => service.open().map(Either::Service),
         }
     }
 }
@@ -119,29 +103,15 @@ mod tests {
     }
 
     #[test]
-    fn a_missing_service_falls_back_only_to_a_node_that_opens() {
-        let route = Route::ServiceThenNode {
-            service: absent(),
-            node: FakeSource::new(),
-        };
-        assert!(matches!(route.open(), Ok(Either::Node(_))));
-
-        let closed = Route::ServiceThenNode {
-            service: absent(),
-            node: absent(),
-        };
-        assert!(matches!(closed.open(), Err(ClientError::Absent)));
+    fn a_missing_service_is_not_made_up_for_by_the_node() {
+        let route: Route<FakeSource, FakeSource> = Route::Service(absent());
+        assert!(matches!(route.open(), Err(ClientError::Absent)));
     }
 
     #[test]
-    fn a_working_service_is_used_and_the_node_is_never_touched() {
-        let node = FakeSource::new();
-        let route = Route::ServiceThenNode {
-            service: FakeSource::new(),
-            node: node.clone(),
-        };
+    fn a_working_service_makes_service_sessions_only() {
+        let route: Route<FakeSource, FakeSource> = Route::Service(FakeSource::new());
         assert!(matches!(route.open(), Ok(Either::Service(_))));
-        assert_eq!(node.state().opened, 0);
     }
 
     #[test]

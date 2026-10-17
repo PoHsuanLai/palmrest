@@ -288,8 +288,8 @@ root service) does, and makes palmrest's three devices on request after checking
 | File (`daemon/uinput/`) | Holds |
 |---|---|
 | `emitter.rs` | `UinputEmitter<S: Session>`: asks for the touchpad or wheel `foreign_output` names, and for the keyboard only when a gesture presses keys (`Create::keys` with the deduplicated codes of `KeyCombo::codes()`). One `Session::send` per pad frame. Counts `Sent::Dropped` frames and goes on. Turns every `ClientError` into an `OutputError` in plain words, asking the session for the service's reason first |
-| `route.rs` | `Route`: a `DeviceSource` over the service and, in this release, the direct node (`Origin`, `Either`) |
-| `direct.rs` | `DirectSource`/`DirectSession`: the same `Session` over palmrest's own uinput node (`--direct-uinput`, and the fallback) |
+| `route.rs` | `Route`: a `DeviceSource` over the service or the direct node (`Origin`, `Either`) |
+| `direct.rs` | `DirectSource`/`DirectSession`: the same `Session` over palmrest's own uinput node (`--direct-uinput`) |
 | `caps.rs` | each device's identity and capabilities (used by `direct.rs`) |
 | `probe.rs` | `--check-uinput`: open a session and make a touchpad |
 
@@ -306,6 +306,4 @@ reported when the settings are read (`Action::read`, `Key::needs_a_shortcut_modi
 predicate mirrors the service's key classes (`turnstile-wire`'s `keytable`); a test here pins
 which names are free, and the service's tests fail when `keys::NAMES` has a code it lacks.
 
-Transition: this release prefers the service and falls back to the node when the service is
-absent and the node opens (`Route::ServiceThenNode`). The next release deletes that arm and
-`Origin::Service` becomes the service alone; `--direct-uinput` (`Route::Node`) stays.
+`Origin::Service` is the service alone (no fallback to the node); `--direct-uinput` (`Route::Node`) is for development.

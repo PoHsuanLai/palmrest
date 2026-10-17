@@ -120,12 +120,9 @@ Mouse 1's report 0x29); `touch.rs` (12-bit wrap of deltas, now on every sensor's
   at load time about a mapped combination like that. Still to come: the desktop installer
   placing the service and `72-turnstile.rules` (`pa2-desk`). INPUT-19's remaining half (limit raw
   hidraw writes to the daemon) is not done: the hidraw rule keeps `uaccess`.
-- *The direct fallback goes in the next release.* `Route::ServiceThenNode` (`daemon/uinput/route.rs`)
-  makes palmrest open `/dev/uinput` itself when the service is absent and the node opens, with a
-  warning. It exists so that no release leaves a machine without a pad while the service and
-  the closed node arrive together. Remove it, and `Origin::Service` meaning "the service, else
-  the node", in the release after the desktop ships the service. `--direct-uinput` stays for
-  development.
+- *The direct fallback is gone (INPUT-02, 2026-10-17).* `Origin::Service` is the input service alone; with
+  the service absent palmrest has no pad and says so. `--direct-uinput` (`Route::Node`) stays for development
+  on a machine whose node is open to the developer.
 - *A lost pad frame can leave a contact down.* When the service's queue is full the frame is
   dropped and counted (the next frame replaces a move), but a dropped `Land` or `Lift` is not
   replaced; libinput sees the contact until the next stroke lands or lifts. Dropped frames are
