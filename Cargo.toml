@@ -23,7 +23,7 @@ notify = "8.2"
 rustix = { version = "1", features = ["event", "fs", "net", "time", "process"] }
 # The input service's client (and the wire it speaks, for the kind of device a request names).
 # By tag, never by path. Both crates live in the one repository and share one tag.
-turnstile-client = { git = "https://github.com/PoHsuanLai/turnstile", tag = "v0.1.2" }
+turnstile-client = { git = "https://github.com/PoHsuanLai/turnstile", tag = "v0.1.3" }
 # Who is on the socket: the shell is the one connection that may say the session is unlocked. By tag,
 # never by path; `fake` (a held process that is only a claim) only as a dev dependency.
 peephole = { git = "https://github.com/PoHsuanLai/peephole", tag = "v0.1.4" }
