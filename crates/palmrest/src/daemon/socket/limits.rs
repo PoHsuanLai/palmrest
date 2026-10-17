@@ -19,6 +19,9 @@ pub(super) const QUEUE_MAX: usize = 1024;
 /// How long the listener is left alone after `accept` failed for a reason that retrying at once
 /// will not clear (out of file descriptors).
 pub(super) const ACCEPT_PAUSE: Duration = Duration::from_secs(1);
+/// How often the seat file is read when no subscriber says anything, so a user switch is noticed
+/// with no traffic.
+pub(super) const SEAT_RECHECK: Duration = Duration::from_secs(1);
 /// How often a refusal is written to the log.
 pub(super) const COMPLAINT_INTERVAL: Duration = Duration::from_secs(60);
 

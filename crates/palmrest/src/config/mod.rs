@@ -15,7 +15,7 @@ pub use enums::{
 };
 pub use file::{Config, ParseError, parse, to_toml};
 pub use lenient::Warning;
-pub use load::{Loaded, config_dir, load};
+pub use load::{Loaded, config_dir, first_directory, load};
 pub use schema::{FILE_NAME as SCHEMA_FILE_NAME, Schema};
 pub use sections::{
     DeviceSettings, FeelSettings, GestureSettings, MomentumSettings, PalmRejectionSettings,

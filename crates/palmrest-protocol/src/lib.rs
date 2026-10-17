@@ -1,6 +1,6 @@
 //! The socket protocol between palmrest and shell-host (12.3.10, O1).
 //!
-//! `$XDG_RUNTIME_DIR/palmrest/events.sock`, `SOCK_SEQPACKET`: one JSON message per packet, so
+//! `/run/palmrest/events.sock`, `SOCK_SEQPACKET`: one JSON message per packet, so
 //! there is no framing to get wrong and a reader never sees half a message. The first packet
 //! on every connection is `Hello`, whose `version` a client checks before reading anything
 //! else; an incompatible change bumps `PROTOCOL_VERSION`.

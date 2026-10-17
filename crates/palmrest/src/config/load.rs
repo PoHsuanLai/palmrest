@@ -1,5 +1,6 @@
-//! Where the file lives and how it is read: `$XDG_CONFIG_HOME/palmrest/gestures.toml`
-//! (22-SETTINGS §2).
+//! Where the file lives and how it is read: `/etc/palmrest/gestures.toml` for the system service
+//! (its `ConfigurationDirectory=`), else `$XDG_CONFIG_HOME/palmrest/gestures.toml` for a tool run
+//! by a person (22-SETTINGS §2).
 
 use super::file::{Config, parse};
 use super::lenient::Warning;
@@ -15,8 +16,12 @@ pub const FILE_NAME: &str = "gestures.toml";
 /// The most the file may hold; the real one is a few kilobytes, so more is not a settings file.
 pub const FILE_MAX_BYTES: u64 = 256 * 1024;
 
-/// The directory holding the file: `$XDG_CONFIG_HOME/palmrest`, else `~/.config/palmrest`.
+/// The directory holding the file: the service's `$CONFIGURATION_DIRECTORY`, else
+/// `$XDG_CONFIG_HOME/palmrest`, else `~/.config/palmrest`.
 pub fn config_dir(lookup: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
+    if let Some(dir) = first_directory(lookup("CONFIGURATION_DIRECTORY")) {
+        return Some(dir);
+    }
     let base = lookup("XDG_CONFIG_HOME")
         .filter(|s| !s.is_empty())
         .map(PathBuf::from)
@@ -26,6 +31,16 @@ pub fn config_dir(lookup: impl Fn(&str) -> Option<String>) -> Option<PathBuf> {
                 .map(|h| Path::new(&h).join(".config"))
         })?;
     Some(base.join("palmrest"))
+}
+
+/// The first directory of one of systemd's directory variables (`$CONFIGURATION_DIRECTORY`,
+/// `$RUNTIME_DIRECTORY`: colon separated, absolute).
+pub fn first_directory(value: Option<String>) -> Option<PathBuf> {
+    value?
+        .split(':')
+        .next()
+        .filter(|s| s.starts_with('/'))
+        .map(PathBuf::from)
 }
 
 /// What a load produced: the config, which file it came from, and every complaint.
@@ -100,6 +115,19 @@ mod tests {
         let home = |k: &str| (k == "HOME").then(|| "/h".to_owned());
         assert_eq!(config_dir(home), Some(PathBuf::from("/h/.config/palmrest")));
         assert_eq!(config_dir(|_| None), None);
+    }
+
+    #[test]
+    fn the_units_directory_wins_and_only_an_absolute_first_entry_counts() {
+        let unit = |k: &str| match k {
+            "CONFIGURATION_DIRECTORY" => Some("/etc/palmrest:/etc/other".to_owned()),
+            "HOME" => Some("/h".to_owned()),
+            _ => None,
+        };
+        assert_eq!(config_dir(unit), Some(PathBuf::from("/etc/palmrest")));
+        assert_eq!(first_directory(Some("relative".to_owned())), None);
+        assert_eq!(first_directory(Some(String::new())), None);
+        assert_eq!(first_directory(None), None);
     }
 
     #[test]

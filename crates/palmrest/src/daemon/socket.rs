@@ -3,6 +3,10 @@
 //! has the pointer, foreign outputs are silent), and their `SessionLock` reports into whether
 //! the session is locked (a locked session runs no gesture action).
 //!
+//! palmrest is a system service, so the socket is open to every local account and the server
+//! decides whom to serve: only the person at the seat (`seat`), and of their programs only the
+//! shell (`shell`) is believed about the pointer and an unlocked session.
+//!
 //! The reader thread hands messages over a bounded channel and wakes this thread with an
 //! eventfd, so the reader never blocks on a slow subscriber: a subscriber whose queue is full
 //! misses that message rather than delaying everyone else's scroll, and a full channel drops
@@ -11,14 +15,18 @@
 
 mod client;
 mod limits;
+mod seat;
 mod server;
+mod shell;
 
 use limits::QUEUE_MAX;
 use palmrest_protocol::{DeviceInfo, LockState, Over, ToHost};
 use rustix::event::{EventfdFlags, eventfd};
 use rustix::fd::OwnedFd;
 use rustix::net::{AddressFamily, SocketAddrUnix, SocketFlags, SocketType};
+pub use seat::{SEAT_FILE, SeatFile};
 use server::{Exit, Server};
+pub use shell::Steering;
 use std::io;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
@@ -98,16 +106,18 @@ pub fn aggregate_lock(locks: impl IntoIterator<Item = Option<LockState>>) -> Loc
     }
 }
 
-/// `$XDG_RUNTIME_DIR/palmrest/events.sock`.
+/// `<runtime_dir>/events.sock`; the runtime directory is `/run/palmrest`, the unit's own.
 pub fn default_path(runtime_dir: &Path) -> PathBuf {
-    runtime_dir.join("palmrest").join("events.sock")
+    runtime_dir.join("events.sock")
 }
 
-/// Binds the listening socket: directory 0700, socket 0600, a stale socket file replaced.
+/// Binds the listening socket, a stale socket file replaced. Mode 0666: every local account may
+/// connect, and the server serves only the person at the seat (the seat and shell checks, not the
+/// file mode, decide whom palmrest believes). The directory is the unit's `RuntimeDirectory=`
+/// (0755); made here only when it is missing, as in a development run.
 pub fn bind(path: &Path) -> io::Result<OwnedFd> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
-        std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
     }
     match std::fs::remove_file(path) {
         Err(e) if e.kind() != io::ErrorKind::NotFound => return Err(e),
@@ -120,18 +130,23 @@ pub fn bind(path: &Path) -> io::Result<OwnedFd> {
         None,
     )?;
     rustix::net::bind(&fd, &SocketAddrUnix::new(path)?)?;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o666))?;
     rustix::net::listen(&fd, 16)?;
     Ok(fd)
 }
 
-/// Starts the socket thread on a bound listener. The joint state goes to `notes`. If the thread can no
-/// longer wait for events the process exits, so the unit restarts instead of running on with a
-/// dead socket.
-pub fn spawn(listener: OwnedFd, notes: Sender<FromSocket>) -> io::Result<SocketHandle> {
+/// Starts the socket thread on a bound listener. The joint state goes to `notes`; `seat` names the
+/// person served and `steering` which connection is their shell. If the thread can no longer wait
+/// for events the process exits, so the unit restarts instead of running on with a dead socket.
+pub fn spawn(
+    listener: OwnedFd,
+    notes: Sender<FromSocket>,
+    seat: SeatFile,
+    steering: Steering,
+) -> io::Result<SocketHandle> {
     let wake = Arc::new(eventfd(0, EventfdFlags::CLOEXEC | EventfdFlags::NONBLOCK)?);
     let (tx, rx) = mpsc::sync_channel(QUEUE_MAX);
-    let server = Server::new(listener, wake.clone(), rx, notes);
+    let server = Server::new(listener, wake.clone(), rx, notes, seat, steering.vouch());
     std::thread::Builder::new()
         .name("palmrest-socket".to_owned())
         .spawn(move || {

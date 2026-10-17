@@ -4,8 +4,11 @@
 
 use super::client::{Client, ClientId, Link};
 use super::limits::{
-    ACCEPTS_PER_PASS, AcceptFailure, Complaints, Intake, MAX_CLIENTS, Voice, accept_failure,
+    ACCEPTS_PER_PASS, AcceptFailure, Complaints, Intake, MAX_CLIENTS, SEAT_RECHECK, Voice,
+    accept_failure,
 };
+use super::seat::{Peer, SeatFile, peer_of};
+use super::shell::Vouch;
 use super::{FromSocket, ToSocket, aggregate, aggregate_lock};
 use palmrest_protocol::{DeviceInfo, LockState, Over, PROTOCOL_VERSION, ToHost};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
@@ -70,6 +73,13 @@ pub(super) struct Server {
     notes: Sender<FromSocket>,
     claim: Over,
     lock: LockState,
+    seat: SeatFile,
+    /// Who has the seat as of the last look.
+    active: Option<u32>,
+    /// When the seat file was last read.
+    looked: Instant,
+    /// Says which connection is the shell.
+    vouch: Box<dyn Vouch>,
 }
 
 impl Server {
@@ -78,6 +88,8 @@ impl Server {
         wake: Arc<OwnedFd>,
         rx: Receiver<ToSocket>,
         notes: Sender<FromSocket>,
+        seat: SeatFile,
+        vouch: Box<dyn Vouch>,
     ) -> Self {
         Self {
             listener,
@@ -93,6 +105,10 @@ impl Server {
             // Locked until a subscriber says otherwise: the tracker starts locked too, so the two
             // agree and nothing is announced for a state nobody changed.
             lock: LockState::Locked,
+            active: seat.active_uid(),
+            looked: Instant::now(),
+            seat,
+            vouch,
         }
     }
 
@@ -114,6 +130,7 @@ impl Server {
                 return Flow::Stop(Exit::PollFailed);
             }
         };
+        self.watch_seat();
         if ready.listener == Readiness::Readable {
             self.accept();
         }
@@ -137,7 +154,12 @@ impl Server {
                 .iter()
                 .map(|c| PollFd::new(c.fd(), PollFlags::IN)),
         );
-        let timeout = self.intake.sleep(Instant::now()).map(timespec);
+        // Never asleep for longer than the seat recheck: a user switch with no traffic is noticed.
+        let timeout = Some(timespec(
+            self.intake
+                .sleep(Instant::now())
+                .map_or(SEAT_RECHECK, |pause| pause.min(SEAT_RECHECK)),
+        ));
         match poll(&mut fds, timeout.as_ref()) {
             Ok(_) | Err(Errno::INTR) => {}
             Err(e) => return Err(e),
@@ -179,8 +201,38 @@ impl Server {
         }
     }
 
-    /// Lets a connection in after its greeting, or closes it at once when the daemon has enough.
+    /// Reads the seat file when it is due.
+    fn watch_seat(&mut self) {
+        if Instant::now().saturating_duration_since(self.looked) >= SEAT_RECHECK {
+            self.look_at_seat();
+        }
+    }
+
+    /// Reads the seat file now. When another user has the seat, every connection that is not
+    /// theirs is closed, and with it whatever it said about the lock. Returns who has the seat.
+    pub(super) fn look_at_seat(&mut self) -> Option<u32> {
+        let active = self.seat.active_uid();
+        self.looked = Instant::now();
+        if active != self.active {
+            self.active = active;
+            self.clients.retain(|c| c.peer(active) != Peer::Observer);
+        }
+        active
+    }
+
+    /// Lets a connection in after its greeting, or closes it at once when it is not the person at
+    /// the seat's, or when the daemon has enough.
     pub(super) fn admit(&mut self, fd: OwnedFd) {
+        let Ok(cred) = rustix::net::sockopt::socket_peercred(&fd) else {
+            return;
+        };
+        let uid = cred.uid.as_raw();
+        // Asked of every connection, whoever has the seat now: the shell may connect a moment
+        // before logind names its user the seat's owner.
+        let origin = self.vouch.origin(&fd);
+        if peer_of(uid, self.look_at_seat(), origin.claim()) == Peer::Observer {
+            return;
+        }
         if self.clients.len() >= MAX_CLIENTS {
             let (complaints, voice) = self.complaints.note(Instant::now());
             self.complaints = complaints;
@@ -189,7 +241,7 @@ impl Server {
             }
             return;
         }
-        let client = Client::new(ClientId(self.next_client), fd);
+        let client = Client::new(ClientId(self.next_client), fd, uid, origin);
         self.next_client += 1;
         let hello = ToHost::Hello {
             version: PROTOCOL_VERSION,
@@ -235,11 +287,12 @@ impl Server {
     /// Reads what subscriber `id` sent. The subscriber may have left since the poll (a failed
     /// broadcast removes it), so it is looked up by id and a missing one is skipped.
     fn receive(&mut self, id: ClientId) {
+        let active = self.active;
         let gone = self
             .clients
             .iter_mut()
             .find(|c| c.id == id)
-            .is_some_and(|c| c.pull() == Link::Gone);
+            .is_some_and(|c| c.pull(active) == Link::Gone);
         if gone {
             self.clients.retain(|c| c.id != id);
         }
@@ -247,12 +300,12 @@ impl Server {
 
     /// Tells the reader what the subscribers jointly say, when it changed.
     fn publish(&mut self) {
-        let claim = aggregate(self.clients.iter().map(|c| c.over));
+        let claim = aggregate(self.clients.iter().map(|c| c.pointer(self.active)));
         if claim != self.claim {
             self.claim = claim;
             let _ = self.notes.send(FromSocket::Pointer(claim));
         }
-        let lock = aggregate_lock(self.clients.iter().map(|c| c.lock));
+        let lock = aggregate_lock(self.clients.iter().map(|c| c.session(self.active)));
         if lock != self.lock {
             self.lock = lock;
             let _ = self.notes.send(FromSocket::Session(lock));

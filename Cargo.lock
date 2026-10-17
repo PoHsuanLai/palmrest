@@ -164,6 +164,8 @@ version = "0.1.0"
 dependencies = [
  "notify",
  "palmrest-protocol",
+ "peephole",
+ "peephole-core",
  "rustix",
  "serde",
  "serde_json",
@@ -179,6 +181,26 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "peephole"
+version = "0.1.4"
+source = "git+https://github.com/PoHsuanLai/peephole?tag=v0.1.4#5a2e742fb12cd78b4555ff07d8d96681fa0bbeb8"
+dependencies = [
+ "peephole-core",
+ "rustix",
+ "thiserror",
+]
+
+[[package]]
+name = "peephole-core"
+version = "0.1.4"
+source = "git+https://github.com/PoHsuanLai/peephole?tag=v0.1.4#5a2e742fb12cd78b4555ff07d8d96681fa0bbeb8"
+dependencies = [
+ "serde",
+ "thiserror",
+ "toml",
 ]
 
 [[package]]

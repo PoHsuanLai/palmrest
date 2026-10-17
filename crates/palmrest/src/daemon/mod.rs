@@ -44,14 +44,11 @@ pub fn run(env: &Env, origin: Origin) -> Result<(), String> {
         }
         None => None,
     };
-    let runtime = env
-        .runtime_dir
-        .as_deref()
-        .ok_or("XDG_RUNTIME_DIR is not set")?;
-    let path = socket::default_path(runtime);
+    let path = socket::default_path(&env.runtime_dir);
     let listener = socket::bind(&path).map_err(|e| format!("{}: {e}", path.display()))?;
     let (notes_tx, notes_rx) = mpsc::channel();
-    let socket = socket::spawn(listener, notes_tx).map_err(|e| format!("socket thread: {e}"))?;
+    let socket = socket::spawn(listener, notes_tx, env.seat_file.clone(), env.steering)
+        .map_err(|e| format!("socket thread: {e}"))?;
     eprintln!("palmrest: listening on {}", path.display());
     let route = LiveRoute::live(origin);
     let factory: Factory = Box::new(move |foreign, combos| {

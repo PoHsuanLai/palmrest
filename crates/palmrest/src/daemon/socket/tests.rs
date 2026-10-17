@@ -1,9 +1,12 @@
-//! The socket thread end to end on a private path: Hello first, fan-out, filters, and a
-//! subscriber's `PointerOver` becoming the tracker's claim (acceptance 10's socket half).
+//! The socket thread end to end on a private path: Hello first, fan-out, filters, a subscriber's
+//! `PointerOver` becoming the tracker's claim (acceptance 10's socket half), and who is served and
+//! believed: the person at the seat, and of their programs only the shell about the lock.
 
 use super::limits::{MAX_CLIENTS, PACKETS_PER_PASS, QUEUE_MAX};
 use super::server::{Flow, Server};
-use super::{FromSocket, SocketHandle, ToSocket, aggregate, aggregate_lock, bind, spawn};
+use super::shell::tests::shell_of;
+use super::shell::{Origin, Steering, Vouch};
+use super::{FromSocket, SeatFile, SocketHandle, ToSocket, aggregate, aggregate_lock, bind, spawn};
 use palmrest_protocol::{
     self as protocol, ActiveTouch, DeviceInfo, Filter, LockState, Over, PROTOCOL_VERSION, TapKind,
     ToDaemon, ToHost, Topic,
@@ -13,10 +16,49 @@ use rustix::fd::OwnedFd;
 use rustix::net::{
     AddressFamily, RecvFlags, SendFlags, SocketAddrUnix, SocketFlags, SocketType, socketpair,
 };
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
+
+/// The uid of this test process, who has the seat in these tests.
+fn me() -> u32 {
+    rustix::process::getuid().as_raw()
+}
+
+/// A seat file that names `active` as the person at the seat (none: no session).
+fn seat_file(dir: &Path, active: Option<u32>) -> SeatFile {
+    std::fs::create_dir_all(dir).unwrap();
+    let path = dir.join("seat0");
+    match active {
+        Some(uid) => std::fs::write(&path, format!("IS_SEAT0=1\nACTIVE_UID={uid}\n")).unwrap(),
+        None => std::fs::write(&path, "IS_SEAT0=1\n").unwrap(),
+    }
+    SeatFile(path)
+}
+
+/// What a test connection is to the daemon.
+#[derive(Debug, Clone, Copy)]
+enum Role {
+    /// The shell of the person at the seat.
+    Shell,
+    /// Another program of theirs.
+    Other,
+}
+
+/// Names each connection in the order the test makes them.
+#[derive(Clone, Default)]
+struct Scripted(Arc<Mutex<VecDeque<Role>>>);
+
+impl Vouch for Scripted {
+    fn origin(&self, _stream: &rustix::fd::OwnedFd) -> Origin {
+        match self.0.lock().unwrap().pop_front() {
+            Some(Role::Shell) => shell_of(me()),
+            Some(Role::Other) | None => Origin::Other,
+        }
+    }
+}
 
 #[test]
 fn the_session_is_locked_unless_a_subscriber_has_said_unlocked_and_none_says_locked() {
@@ -85,10 +127,18 @@ fn hello_fanout_filters_and_claims() {
     use std::os::unix::fs::PermissionsExt;
     assert_eq!(
         std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
-        0o600
+        0o666,
+        "open to every account; the server decides whom to serve"
     );
     let (claims_tx, claims) = mpsc::channel();
-    let handle = spawn(listener, claims_tx).unwrap();
+    // Every program of the test user stands for the shell: these clients are in no unit.
+    let handle = spawn(
+        listener,
+        claims_tx,
+        seat_file(&dir, Some(me())),
+        Steering::SeatUser,
+    )
+    .unwrap();
 
     let a = connect(&path);
     assert!(matches!(
@@ -166,25 +216,46 @@ struct Stepped {
     handle: SocketHandle,
     claims: Receiver<FromSocket>,
     dir: PathBuf,
+    roles: Scripted,
 }
 
 impl Stepped {
+    /// A server where this test's user has the seat.
     fn new(name: &str) -> Self {
+        Self::at_seat(name, Some(me()))
+    }
+
+    /// A server where `active` has the seat.
+    fn at_seat(name: &str, active: Option<u32>) -> Self {
         let dir = std::env::temp_dir().join(format!("palmrest-{name}-{}", std::process::id()));
         let listener = bind(&dir.join("events.sock")).unwrap();
         let wake = Arc::new(eventfd(0, EventfdFlags::CLOEXEC | EventfdFlags::NONBLOCK).unwrap());
         let (tx, rx) = mpsc::sync_channel(QUEUE_MAX);
         let (claims_tx, claims) = mpsc::channel();
+        let roles = Scripted::default();
         Self {
-            server: Server::new(listener, wake.clone(), rx, claims_tx),
+            server: Server::new(
+                listener,
+                wake.clone(),
+                rx,
+                claims_tx,
+                seat_file(&dir, active),
+                Box::new(roles.clone()),
+            ),
             handle: SocketHandle { tx, wake },
             claims,
             dir,
+            roles,
         }
     }
 
-    /// Connects a subscriber through a socket pair and returns its end.
+    /// Connects the shell through a socket pair and returns its end.
     fn subscribe(&mut self) -> OwnedFd {
+        self.connect(Role::Shell)
+    }
+
+    /// Connects a program that is `role` through a socket pair and returns its end.
+    fn connect(&mut self, role: Role) -> OwnedFd {
         let (ours, theirs) = socketpair(
             AddressFamily::UNIX,
             SocketType::SEQPACKET,
@@ -192,6 +263,7 @@ impl Stepped {
             None,
         )
         .unwrap();
+        self.roles.0.lock().unwrap().push_back(role);
         self.server.admit(ours);
         theirs
     }
@@ -282,10 +354,10 @@ fn a_full_queue_drops_messages_instead_of_blocking_the_reader() {
 }
 
 #[test]
-fn the_session_is_unlocked_only_while_a_subscriber_says_so() {
+fn the_session_is_unlocked_only_by_the_shell_and_any_subscriber_can_lock_it() {
     let mut s = Stepped::new("lock");
     let shell = s.subscribe();
-    let other = s.subscribe();
+    let other = s.connect(Role::Other);
     let tell = |fd: &OwnedFd, state| {
         rustix::net::send(
             fd,
@@ -300,6 +372,13 @@ fn the_session_is_unlocked_only_while_a_subscriber_says_so() {
         "subscribers that have said nothing leave it locked, and that is no news"
     );
 
+    tell(&other, LockState::Unlocked);
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert!(
+        s.claims.try_recv().is_err(),
+        "a program that is not the shell cannot unlock the session"
+    );
+
     tell(&shell, LockState::Unlocked);
     assert_eq!(s.server.step(), Flow::Continue);
     assert_eq!(
@@ -312,27 +391,76 @@ fn the_session_is_unlocked_only_while_a_subscriber_says_so() {
     assert_eq!(
         s.claims.try_recv(),
         Ok(FromSocket::Session(LockState::Locked)),
-        "any subscriber can lock it"
+        "any program of the person can lock it"
     );
 
-    tell(&other, LockState::Unlocked);
+    drop(other);
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(
+        s.claims.try_recv(),
+        Ok(FromSocket::Session(LockState::Unlocked)),
+        "the one that locked it left, and the shell still says unlocked"
+    );
+
+    drop(shell);
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(
+        s.claims.try_recv(),
+        Ok(FromSocket::Session(LockState::Locked)),
+        "with no subscriber connected the session counts as locked"
+    );
+}
+
+#[test]
+fn only_the_shell_is_believed_about_the_pointer() {
+    let mut s = Stepped::new("pointer");
+    let other = s.connect(Role::Other);
+    rustix::net::send(
+        &other,
+        &protocol::encode(&ToDaemon::PointerOver { over: Over::Ours }),
+        SendFlags::NOSIGNAL,
+    )
+    .unwrap();
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert!(s.claims.try_recv().is_err());
+}
+
+#[test]
+fn only_the_person_at_the_seat_is_served() {
+    for (name, active) in [("another-user", Some(me() + 1)), ("no-session", None)] {
+        let mut s = Stepped::at_seat(name, active);
+        let stranger = s.connect(Role::Shell);
+        assert_eq!(s.server.subscribers(), 0, "{name}");
+        assert!(queued(&stranger).is_empty(), "{name}: no greeting");
+    }
+}
+
+#[test]
+fn a_user_switch_closes_the_connections_of_the_one_who_left() {
+    let mut s = Stepped::new("switch");
+    let shell = s.subscribe();
+    rustix::net::send(
+        &shell,
+        &protocol::encode(&ToDaemon::SessionLock {
+            state: LockState::Unlocked,
+        }),
+        SendFlags::NOSIGNAL,
+    )
+    .unwrap();
     assert_eq!(s.server.step(), Flow::Continue);
     assert_eq!(
         s.claims.try_recv(),
         Ok(FromSocket::Session(LockState::Unlocked))
     );
 
-    drop(shell);
-    assert_eq!(s.server.step(), Flow::Continue);
-    assert!(
-        s.claims.try_recv().is_err(),
-        "the other subscriber still says unlocked"
-    );
-    drop(other);
+    seat_file(&s.dir, Some(me() + 1));
+    assert_eq!(s.server.look_at_seat(), Some(me() + 1));
+    assert_eq!(s.server.subscribers(), 0);
+    s.handle.send(ToSocket::Msg(TOUCHES));
     assert_eq!(s.server.step(), Flow::Continue);
     assert_eq!(
         s.claims.try_recv(),
         Ok(FromSocket::Session(LockState::Locked)),
-        "with no subscriber connected the session counts as locked"
+        "the session is locked again for whoever comes next"
     );
 }
