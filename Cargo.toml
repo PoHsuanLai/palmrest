@@ -18,9 +18,11 @@ thiserror = "2"
 serde_json = "1"
 toml = "1"
 notify = "8.2"
-# Not in the pinned block: poll, SOCK_SEQPACKET, eventfd, CLOCK_MONOTONIC and the ioctl
-# plumbing without libc's unsafe surface. See FINDINGS.
+# Not in the pinned block: poll, SOCK_SEQPACKET, eventfd, CLOCK_MONOTONIC, file opens and the one
+# hidraw ioctl without libc's unsafe surface. See FINDINGS.
 rustix = { version = "1", features = ["event", "fs", "net", "time", "process"] }
+# The evdev and uinput ioctls behind safe handles. See FINDINGS.
+input-linux = { version = "0.7", default-features = false }
 # The input service's client (and the wire it speaks, for the kind of device a request names).
 # By tag, never by path. Both crates live in the one repository and share one tag.
 turnstile-client = { git = "https://github.com/PoHsuanLai/turnstile", tag = "v0.1.4" }

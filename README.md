@@ -60,7 +60,7 @@ sensor's millimetres feel the same per millimetre.
 | `config` | `gestures.toml`, lenient per key, the watch |
 | `outputs` | the `Emitter` seam, `RecordingEmitter`, the virtual touchpad model, evdev event encoding |
 | `recording`, `replay` | the `palmrest record` file (v1 hidraw, v2 any sensor) and the replay used by every acceptance test |
-| `daemon` | threads, socket, discovery and backoff, the sensor node (hidraw or evdev), devices, record, latency, the virtual-device emitter over the input service (and the direct fallback), and `sys`: the ioctls, the only module allowed `unsafe` |
+| `daemon` | threads, socket, discovery and backoff, the sensor node (hidraw or evdev), devices, record, latency, the virtual-device emitter over the input service (and the direct fallback), `sys`: the evdev and uinput ioctls through `input-linux`'s safe handles, and `hidioc`: the one hidraw ioctl, the only module allowed `unsafe` |
 
 ## Sensors
 

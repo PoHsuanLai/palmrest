@@ -97,7 +97,7 @@ sketches a flat `GesturesSettings { scroll_speed, .. }`, which disagrees with it
 dotted catalogue; palmrest follows the catalogue and §4.3 wants correcting.
 
 **`rustix` is outside the pinned block.** It (poll, eventfd, `SOCK_SEQPACKET`,
-`CLOCK_MONOTONIC`, typed ioctls) is not in quire's `docs/workspace-deps.toml`; it should be
+`CLOCK_MONOTONIC`, the hidraw ioctl) is not in quire's `docs/workspace-deps.toml`; it should be
 added there. `toml`, `serde_json` and `notify` use the pinned versions.
 
 **Every `TODO(untested)` left.** `sensor/evdev/mod.rs` (the whole sensor: fuzz, no contact
@@ -233,8 +233,18 @@ the X lock to the lift.
 `DeviceInfo` then `DeviceGone`. The `f32` fields keep `ToHost` from deriving `Eq`. A subscriber
 whose queue is full misses that message rather than delaying the reader.
 
-**`unsafe` lives in `daemon/sys.rs` only.** Each block has a SAFETY comment; ioctl opcodes are checked
-against the header values in a unit test. Licences pass `cargo deny`.
+**`unsafe` lives in `daemon/hidioc.rs` only (2026-10-17).** The evdev and uinput ioctls (`EVIOCGABS`,
+`EVIOCSCLOCKID`, `UI_SET_*BIT`, `UI_DEV_SETUP`, `UI_ABS_SETUP`, `UI_DEV_CREATE`, `UI_DEV_DESTROY`) used to be
+rustix `Ioctl` blocks in `daemon/sys.rs`; they now go through `input-linux` 0.7 (MIT, `default-features = false`,
+the same line as turnstile): `EvdevHandle::{absolute_info, set_clock_id}` and `UInputHandle::{set_evbit,
+set_keybit, set_relbit, set_absbit, set_propbit, create, dev_destroy}`. One site stays unsafe: `HIDIOCSFEATURE`
+(`send_feature`, moved to `daemon/hidioc.rs`, which keeps the `SAFETY` comment and an opcode test) because no
+safe crate has the hidraw ioctls. What changed in behaviour: a raw code is checked against its kind's range
+before the ioctl (`InvalidInput`); `UInputHandle::create` does setup, the axis setups and create in one call, so
+the axes are passed at creation, not as the bits are set, and on `EINVAL` from `UI_DEV_SETUP` (a kernel before
+4.5) it falls back to the legacy `uinput_user_dev` write. The crate brings `nix` 0.29 beside the `nix` that
+`notify` uses. The opcode and struct-size tests for the removed calls are gone; the manual check is that
+palmrest scrolls and swipes, and both it and the device it made go away on exit. Licences pass `cargo deny`.
 
 **Discovery matches fields, not substrings.** `HID_ID` is parsed as bus:vendor:product and
 looked up in `sensor::magic_mouse::KNOWN`: Bluetooth Magic Mouse 2 (`0005:004c:0269`,

@@ -72,15 +72,21 @@ fn create(id: Identity, caps: &Caps) -> io::Result<Device> {
     for &r in &caps.rels {
         sys::set_bit(&fd, BitSet::Rel, r)?;
     }
-    for &(code, range) in &caps.abs {
+    for &(code, _) in &caps.abs {
         sys::set_bit(&fd, BitSet::Abs, code)?;
-        let absinfo = AbsInfo {
-            maximum: range.max,
-            resolution: range.resolution,
-            ..AbsInfo::default()
-        };
-        sys::abs_setup(&fd, UinputAbsSetup { code, absinfo })?;
     }
+    let abs: Vec<UinputAbsSetup> = caps
+        .abs
+        .iter()
+        .map(|&(code, range)| UinputAbsSetup {
+            code,
+            absinfo: AbsInfo {
+                maximum: range.max,
+                resolution: range.resolution,
+                ..AbsInfo::default()
+            },
+        })
+        .collect();
     for &p in &caps.props {
         sys::set_bit(&fd, BitSet::Prop, p)?;
     }
@@ -96,8 +102,7 @@ fn create(id: Identity, caps: &Caps) -> io::Result<Device> {
         name,
         ff_effects_max: 0,
     };
-    sys::dev_setup(&fd, setup)?;
-    sys::dev_create(&fd)?;
+    sys::dev_create(&fd, setup, &abs)?;
     Ok(Device { fd })
 }
 

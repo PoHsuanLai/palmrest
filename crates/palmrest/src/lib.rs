@@ -3,7 +3,7 @@
 //! The pure core (`sensor`, `touch`, `stamp`, `feel`, `gestures`, `tracker`, `action`,
 //! `config`, `outputs`) takes bytes and instants and returns values; `recording` and `replay`
 //! feed recorded reads through it. The daemon owns every thread, socket, device and clock, and
-//! its `sys` holds the only `unsafe`; `command::run` is the one way in to it. The socket
+//! its `hidioc` holds the only `unsafe` (one hidraw ioctl); `command::run` is the one way in to it. The socket
 //! messages are the `palmrest-protocol` crate.
 
 pub mod action;
