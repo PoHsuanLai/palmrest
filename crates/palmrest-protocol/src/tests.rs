@@ -37,6 +37,11 @@ fn samples() -> Vec<ToHost> {
             active: ActiveTouch::Down,
         },
         ToHost::DeviceGone,
+        ToHost::Run {
+            action: HostAction::Command {
+                argv: vec!["notify-send".into(), "hi \"there\"".into()],
+            },
+        },
     ]
 }
 
@@ -53,6 +58,9 @@ fn every_message_round_trips() {
         },
         ToDaemon::SessionLock {
             state: LockState::Locked,
+        },
+        ToDaemon::UserConfig {
+            toml: "[scroll]\nspeed = 30\n".into(),
         },
     ] {
         assert_eq!(decode::<ToDaemon>(&encode(&m)).unwrap(), m);
@@ -76,7 +84,7 @@ fn wire_form_is_adjacently_tagged() {
 fn filters_admit_by_topic() {
     let only = Filter::Only(vec![Topic::Scroll]);
     let got: Vec<bool> = samples().iter().map(|m| only.admits(m)).collect();
-    assert_eq!(got, [true, true, false, false, false, true]);
+    assert_eq!(got, [true, true, false, false, false, true, true]);
     assert!(samples().iter().all(|m| Filter::All.admits(m)));
 }
 
@@ -105,4 +113,50 @@ fn only_a_hello_of_another_version_is_incompatible() {
         }
     );
     assert_eq!(compat(&ToHost::DeviceGone), Compat::Compatible);
+}
+
+#[test]
+fn the_largest_settings_text_fits_a_packet_with_every_character_escaped() {
+    let worst = ToDaemon::UserConfig {
+        toml: "\"\n".repeat(USER_CONFIG_MAX_BYTES / 2),
+    };
+    assert!(encode(&worst).len() <= MAX_PACKET);
+}
+
+#[test]
+fn an_action_fits_when_it_has_words_in_bounds() {
+    let words = |n: usize, len: usize| vec!["w".repeat(len); n];
+    let cases = [
+        ("a workspace step", HostAction::WorkspaceNext, true),
+        (
+            "a short command",
+            HostAction::Command { argv: words(3, 8) },
+            true,
+        ),
+        (
+            "the most words",
+            HostAction::Shell {
+                words: words(ACTION_WORDS_MAX, 1),
+            },
+            true,
+        ),
+        (
+            "one word too many",
+            HostAction::Shell {
+                words: words(ACTION_WORDS_MAX + 1, 1),
+            },
+            false,
+        ),
+        (
+            "a word too long",
+            HostAction::Command {
+                argv: words(1, ACTION_WORD_MAX_BYTES + 1),
+            },
+            false,
+        ),
+        ("no words", HostAction::Command { argv: vec![] }, false),
+    ];
+    for (name, action, want) in cases {
+        assert_eq!(action.fits(), want, "{name}");
+    }
 }

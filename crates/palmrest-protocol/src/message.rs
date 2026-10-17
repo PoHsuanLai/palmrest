@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::vocab::{ActiveTouch, Axis, GestureId, LockState, Over, Phase, TapKind};
+use crate::vocab::{ActiveTouch, Axis, GestureId, HostAction, LockState, Over, Phase, TapKind};
 
 /// The mouse palmrest is reading.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -73,13 +73,16 @@ pub enum ToHost {
     Touches { active: ActiveTouch },
     /// The mouse went away; every running gesture was Cancelled first.
     DeviceGone,
+    /// A gesture's action that needs the person's session. Sent to the shell only (the connection
+    /// the daemon believes about the lock), whatever its filter says; the shell carries it out.
+    Run { action: HostAction },
 }
 
 impl ToHost {
     /// The topic a subscriber filters this message by; `None` for always-delivered messages.
     pub fn topic(&self) -> Option<Topic> {
         match self {
-            Self::Hello { .. } | Self::DeviceGone => None,
+            Self::Hello { .. } | Self::DeviceGone | Self::Run { .. } => None,
             Self::Scroll { .. } => Some(Topic::Scroll),
             Self::Swipe { .. } => Some(Topic::Swipe),
             Self::Tap { .. } => Some(Topic::Tap),
@@ -100,4 +103,9 @@ pub enum ToDaemon {
     /// session counts as locked while any connection says so; a connection that closes stops
     /// saying it.
     SessionLock { state: LockState },
+    /// The person's own gesture settings (the text of `~/.config/palmrest/gestures.toml`, at most
+    /// [`crate::USER_CONFIG_MAX_BYTES`]), sent by the shell after connecting and when the file
+    /// changes. The daemon layers it over `/etc/palmrest/gestures.toml`; empty text takes the
+    /// person's layer away. Believed from the shell only.
+    UserConfig { toml: String },
 }

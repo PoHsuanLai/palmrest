@@ -6,9 +6,14 @@ use thiserror::Error;
 use crate::message::ToHost;
 
 /// The protocol version carried by `Hello`.
-pub const PROTOCOL_VERSION: u16 = 1;
-/// No message is larger than this; a longer packet is not ours.
-pub const MAX_PACKET: usize = 4096;
+/// 2 added `ToHost::Run` and `ToDaemon::UserConfig` and the larger packet.
+pub const PROTOCOL_VERSION: u16 = 2;
+/// No message is larger than this; a longer packet is not ours. Room for [`USER_CONFIG_MAX_BYTES`]
+/// of settings with every quote and line break escaped.
+pub const MAX_PACKET: usize = 64 * 1024;
+/// The most text of the person's settings that travels (`ToDaemon::UserConfig`); a larger file is
+/// not a settings file.
+pub const USER_CONFIG_MAX_BYTES: usize = 24 * 1024;
 
 /// A packet that is not a message of this protocol.
 #[derive(Debug, Error)]

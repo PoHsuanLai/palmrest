@@ -17,5 +17,11 @@ mod wire;
 mod tests;
 
 pub use message::{DeviceInfo, Filter, ToDaemon, ToHost, Topic};
-pub use vocab::{ActiveTouch, Axis, GestureId, LockState, Over, Phase, TapKind};
-pub use wire::{Compat, MAX_PACKET, PROTOCOL_VERSION, ProtocolError, compat, decode, encode};
+pub use vocab::{
+    ACTION_WORD_MAX_BYTES, ACTION_WORDS_MAX, ActiveTouch, Axis, GestureId, HostAction, LockState,
+    Over, Phase, TapKind,
+};
+pub use wire::{
+    Compat, MAX_PACKET, PROTOCOL_VERSION, ProtocolError, USER_CONFIG_MAX_BYTES, compat, decode,
+    encode,
+};

@@ -60,3 +60,41 @@ pub enum LockState {
     #[default]
     Unlocked,
 }
+
+/// The most words a program or shell line may have.
+pub const ACTION_WORDS_MAX: usize = 16;
+/// The longest word of such a line, in bytes.
+pub const ACTION_WORD_MAX_BYTES: usize = 256;
+
+/// What the daemon asks the shell to do in the person's session: the daemon is a system service
+/// and has no session, so a gesture that needs one is carried out by the shell, as the person.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "v", rename_all = "snake_case")]
+pub enum HostAction {
+    /// The workspace before the active one.
+    WorkspacePrev,
+    /// The workspace after the active one.
+    WorkspaceNext,
+    /// The workspace overview.
+    WorkspaceOverview,
+    /// A line of the shell's own command language (what follows `sill` on its command line).
+    Shell { words: Vec<String> },
+    /// A program of the person's, with its arguments (the program first); run without a shell.
+    Command { argv: Vec<String> },
+}
+
+impl HostAction {
+    /// Whether the words fit the bounds (at most [`ACTION_WORDS_MAX`] words of at most
+    /// [`ACTION_WORD_MAX_BYTES`] bytes, and a program or a line is not empty). A side that gets an
+    /// action that does not fit drops it.
+    pub fn fits(&self) -> bool {
+        match self {
+            Self::WorkspacePrev | Self::WorkspaceNext | Self::WorkspaceOverview => true,
+            Self::Shell { words } | Self::Command { argv: words } => {
+                !words.is_empty()
+                    && words.len() <= ACTION_WORDS_MAX
+                    && words.iter().all(|w| w.len() <= ACTION_WORD_MAX_BYTES)
+            }
+        }
+    }
+}
