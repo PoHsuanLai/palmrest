@@ -1,0 +1,49 @@
+name: ci
+
+# Formatting, lints, licences and advisories of the dependencies, and the tests. The advisories
+# check reads the RustSec database, so it also runs once a week without a push: a new advisory
+# against a locked dependency should not wait for the next change. No test touches a device; the
+# input service is a fake.
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "41 5 * * 1"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the toolchain pinned in rust-toolchain.toml
+        run: |
+          channel="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust-toolchain.toml)"
+          test -n "$channel"
+          rustup toolchain install "$channel" --profile minimal --component rustfmt --component clippy
+          rustup show active-toolchain
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - run: cargo test --workspace --all-features --locked
+
+  # Licences, advisories, bans and sources of everything in Cargo.lock.
+  deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: licences
+        run: cargo deny check licenses
+      - name: advisories
+        run: cargo deny check advisories
+      - name: bans and sources
+        run: cargo deny check bans sources

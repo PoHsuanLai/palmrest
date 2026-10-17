@@ -287,3 +287,11 @@ slots; it has not tracked a real finger, and no other mouse has run it. Recordin
 (`PALMREC\x01`, hidraw) is what hidraw records write and every fixture is; v2 (`PALMREC\x02`)
 adds a JSON header naming the source and, for evdev, the geometry. `recording::parse` refuses a
 v2 evdev file rather than decoding it as hidraw.
+
+## Supply chain and standalone access (2026-10-17)
+
+- *CI exists (INPUT-16).* `.github/workflows/ci.yml` runs format, clippy, tests, `cargo deny check licenses`,
+  `advisories` and `bans sources` (deny.toml allows crates.io and the one git source, turnstile), weekly as well as
+  on push. Advisories read a live database, so a new one can fail an unchanged tree.
+- *The hidraw `uaccess` line stays (INPUT-19).* The Magic Mouse's raw reports are read by palmrest itself as the user;
+  the rule grants that node and no other.
