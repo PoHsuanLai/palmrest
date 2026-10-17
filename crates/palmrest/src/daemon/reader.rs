@@ -7,12 +7,12 @@ use super::dispatch::dispatch;
 use super::hidraw::{self, Read};
 use super::socket::{FromSocket, SocketHandle, ToSocket};
 use super::source::{self, Opened, Purpose};
-use super::spawn::Spawner;
 use crate::action::Desktop;
-use crate::config::Loaded;
+use crate::config::{self, Loaded};
 use crate::recording::Record;
 use crate::replay::{Timing, feed_from};
 use crate::stamp::StampClock;
+use crate::time::Mono;
 use crate::tracker::{Out, Tracker};
 use std::sync::mpsc::Receiver;
 use std::time::Duration;
@@ -28,9 +28,13 @@ pub struct Reader {
     pub notes: Receiver<FromSocket>,
     pub configs: Receiver<Loaded>,
     pub devices: Devices,
-    pub spawner: Spawner,
     pub desktop: Desktop,
     pub tracker: Tracker,
+    /// The machine's settings text (`/etc/palmrest/gestures.toml`), as last read.
+    pub system: String,
+    /// The person's settings text, as the shell last sent it; none until it does, and again
+    /// when the person leaves the seat.
+    pub user: Option<String>,
 }
 
 impl Reader {
@@ -112,8 +116,8 @@ impl Reader {
                 .warnings
                 .iter()
                 .for_each(|w| eprintln!("palmrest: config: {w}"));
-            self.devices = self.devices.reconfigure(&loaded.config, now);
-            self.tracker = self.tracker.with_config(loaded.config);
+            self.system = loaded.text;
+            self = self.with_layers(now);
         }
         while let Ok(note) = self.notes.try_recv() {
             self = match note {
@@ -122,9 +126,24 @@ impl Reader {
                     tracker: self.tracker.with_session_lock(lock),
                     ..self
                 },
+                FromSocket::UserConfig(text) => {
+                    self.user = text;
+                    self.with_layers(now)
+                }
             };
         }
         self.devices = self.devices.poll(now);
+        self
+    }
+
+    /// The settings in force: the machine's file with the person's laid over it.
+    fn with_layers(mut self, now: Mono) -> Self {
+        let (config, warnings) = config::layered(&self.system, self.user.as_deref());
+        warnings
+            .iter()
+            .for_each(|w| eprintln!("palmrest: config: {w}"));
+        self.devices = self.devices.reconfigure(&config, now);
+        self.tracker = self.tracker.with_config(config);
         self
     }
 
@@ -134,13 +153,7 @@ impl Reader {
     }
 
     fn emit(mut self, outs: Vec<Out>) -> Self {
-        dispatch(
-            outs,
-            &self.socket,
-            &mut self.devices,
-            &self.spawner,
-            self.desktop,
-        );
+        dispatch(outs, &self.socket, &mut self.devices, self.desktop);
         match self.devices.take_health() {
             Health::Fine => self,
             Health::LostDevices => Self {

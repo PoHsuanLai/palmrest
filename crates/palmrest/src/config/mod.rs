@@ -2,6 +2,7 @@
 
 pub mod enums;
 pub mod file;
+pub mod layer;
 pub mod lenient;
 pub mod load;
 pub mod schema;
@@ -13,7 +14,8 @@ pub use enums::{
     ContactNibblePolicy, Curve, DeviceSource, ForeignMomentum, ForeignOutput, G4Mode, Rejection,
     SwipeRepeat,
 };
-pub use file::{Config, ParseError, parse, to_toml};
+pub use file::{Config, ParseError, parse, parse_table, to_toml};
+pub use layer::layered;
 pub use lenient::Warning;
 pub use load::{Loaded, config_dir, first_directory, load};
 pub use schema::{FILE_NAME as SCHEMA_FILE_NAME, Schema};

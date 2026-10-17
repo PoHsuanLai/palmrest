@@ -63,8 +63,8 @@ such a touch never counts, so no tap. As specified; tune on the device.
 **Not built: live workspace mode.** A synthetic four-contact swipe on the virtual touchpad so
 the compositor tracks the workspace. Its model and keys are built together with the driver
 that uses them. On our desktop,
-`WorkspacePrev/Next` spawn `sill workspace prev|next`, which sill-ipc does not have yet (12.7's
-proposed addition), and `ShellIpc(s)` spawns `sill` with the words of `s`.
+`WorkspacePrev/Next/Overview` and `ShellIpc(s)` are asked of the shell (`ToHost::Run`), which does
+what `sill workspace ...` and `sill` with the words of `s` do.
 
 **Settings keys design/22 should gain** (all proposed; palmrest reads them with these defaults):
 
@@ -143,20 +143,21 @@ Mouse 1's report 0x29); `touch.rs` (12-bit wrap of deltas, now on every sensor's
   send `ToDaemon::SessionLock` when the lock service reports Locked or Unlocked (interface ask in
   the lane report). Neither casement nor sill publishes a lock state a daemon outside the session
   can read, and logind's `LockedHint` is not set by sill's locker.
-- *Open after the move to a system service (2026-10-17).* Two things a user service did and a system service
-  cannot, both to be settled with the owner before the next release:
-  1. **The person's settings.** The Settings app writes `~/.config/palmrest/gestures.toml`; the service
-     (a dynamic user with `ProtectHome=yes`) reads only `/etc/palmrest/gestures.toml`. Until the shell
-     forwards the person's file (a `ToDaemon::UserConfig` message from the shell only, applied while that
-     person has the seat and cut down as keycap's `ConfigLayer::confined` does), the feel and the gesture
-     table are the machine's.
-  2. **Programs a gesture runs.** `Action::WorkspacePrev/Next`, `ShellIpc` and `Command` spawn a program
-     (`daemon::spawn`); from the system service it runs as the dynamic user, outside the person's session
-     (no session bus, no `sill` socket). Key actions (`Back`, `Forward`, `Keys`) are unaffected. The fix is
-     a `ToHost` message to the shell, which runs the action itself.
-  3. **shell-host's client.** `shell-host/crates/shell-host/src/input/palmrest.rs` must connect to
-     `/run/palmrest/events.sock` and trust a peer by its control group `/system.slice/palmrest.service`
-     (its `trust` accepts only the person's uid or root, and the service is neither).
+- *Settings and actions after the move to a system service (2026-10-17): done.* The service
+  (a dynamic user with `ProtectHome=yes`) reads `/etc/palmrest/gestures.toml`; the person's
+  `~/.config/palmrest/gestures.toml` reaches it as `ToDaemon::UserConfig`, sent by the shell
+  (shell-host's palmrest client reads the file, at most 24 KiB, after connecting and whenever it
+  changes; it polls the file's modification time every two seconds, since shell-host watches no
+  files). The daemon believes it from the shell's connection only, merges it key by key over the
+  machine's file (`config::layer`), drops what a person may not set (`[device]`, and a program or
+  shell line over 16 words or 256 bytes a word) with a warning, and forgets it when another person
+  takes the seat. A bad value in the person's layer falls back to the key's shipped default, not to
+  the machine's value (the merge happens before the lenient reading). The actions that need the
+  session (`WorkspacePrev/Next/Overview`, `ShellIpc`, `Command`, and the KDE shortcuts) are a
+  `ToHost::Run` to the shell's connection alone, whatever its filter; the shell runs them as the
+  person (sill: the workspace verbs and shell lines through its own request path, a program as a
+  child of the shell). With no shell connected the action is dropped and logged. Key actions still go
+  through the input service. The protocol is version 2 (`Run`, `UserConfig`, 64 KiB packets).
 - *Fail safe without a shell (NEW-QDH-2, 2026-10-17).* The session counts as locked unless a subscriber has said
   Unlocked and none says Locked (`aggregate_lock`): with no subscriber connected (a shell restart, or palmrest
   restarting during a lock), or only silent ones, gesture keys and desktop actions are dropped, while pointer

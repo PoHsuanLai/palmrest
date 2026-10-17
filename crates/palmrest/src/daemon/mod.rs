@@ -12,7 +12,6 @@ pub mod reader;
 pub mod record;
 pub mod socket;
 pub mod source;
-pub mod spawn;
 pub(crate) mod sys;
 pub mod uinput;
 
@@ -22,7 +21,6 @@ use crate::tracker::Tracker;
 use devices::{Devices, Factory};
 pub use env::Env;
 use palmrest_protocol::LockState;
-use spawn::Spawner;
 use std::sync::mpsc;
 use uinput::{LiveRoute, Origin, UinputEmitter};
 
@@ -54,18 +52,18 @@ pub fn run(env: &Env, origin: Origin) -> Result<(), String> {
     let factory: Factory = Box::new(move |foreign, combos| {
         Ok(Box::new(UinputEmitter::create(&route, foreign, combos)?) as Box<dyn Emitter>)
     });
-    let spawner = Spawner::start().map_err(|e| format!("reaper thread: {e}"))?;
     let now = hidraw::now();
     let reader = reader::Reader {
         socket,
         notes: notes_rx,
         configs: config_rx,
         devices: Devices::new(factory, &loaded.config, now),
-        spawner,
         desktop: env.desktop,
         // Locked until the shell says otherwise: a gesture runs no key or desktop action on a
         // session whose state nobody has reported.
         tracker: Tracker::new(loaded.config).with_session_lock(LockState::Locked),
+        system: loaded.text,
+        user: None,
     };
     reader.run();
     Ok(())

@@ -74,28 +74,34 @@ pub fn parse(text: &str) -> Result<(Config, Vec<Warning>), ParseError> {
     let root: toml::Table = text
         .parse()
         .map_err(|e: toml::de::Error| ParseError(e.to_string()))?;
+    Ok(parse_table(&root))
+}
+
+/// Reads a parsed table, leniently like [`parse`]; the layers of the machine's and the person's
+/// files are merged as tables first (`layer`).
+pub fn parse_table(root: &toml::Table) -> (Config, Vec<Warning>) {
     let mut warn = Vec::new();
     let d = Config::default();
     let w = &mut warn;
     let config = Config {
-        rejection: field(&root, "", "rejection", d.rejection, w),
-        foreign_output: field(&root, "", "foreign_output", d.foreign_output, w),
-        foreign_momentum: field(&root, "", "foreign_momentum", d.foreign_momentum, w),
-        scroll: ScrollSettings::from_table(&section(&root, "", "scroll", w), "scroll", w),
-        feel: FeelSettings::from_table(&section(&root, "", "feel", w), "feel", w),
-        momentum: MomentumSettings::from_table(&section(&root, "", "momentum", w), "momentum", w),
-        swipe: SwipeSettings::from_table(&section(&root, "", "swipe", w), "swipe", w),
-        tap: TapSettings::from_table(&section(&root, "", "tap", w), "tap", w),
-        gestures: GestureSettings::from_table(&section(&root, "", "gestures", w), "gestures", w),
+        rejection: field(root, "", "rejection", d.rejection, w),
+        foreign_output: field(root, "", "foreign_output", d.foreign_output, w),
+        foreign_momentum: field(root, "", "foreign_momentum", d.foreign_momentum, w),
+        scroll: ScrollSettings::from_table(&section(root, "", "scroll", w), "scroll", w),
+        feel: FeelSettings::from_table(&section(root, "", "feel", w), "feel", w),
+        momentum: MomentumSettings::from_table(&section(root, "", "momentum", w), "momentum", w),
+        swipe: SwipeSettings::from_table(&section(root, "", "swipe", w), "swipe", w),
+        tap: TapSettings::from_table(&section(root, "", "tap", w), "tap", w),
+        gestures: GestureSettings::from_table(&section(root, "", "gestures", w), "gestures", w),
         palm_rejection: PalmRejectionSettings::from_table(
-            &section(&root, "", "palm_rejection", w),
+            &section(root, "", "palm_rejection", w),
             "palm_rejection",
             w,
         ),
-        touchpad: TouchpadSettings::from_table(&section(&root, "", "touchpad", w), "touchpad", w),
-        device: DeviceSettings::from_table(&section(&root, "", "device", w), "device", w),
+        touchpad: TouchpadSettings::from_table(&section(root, "", "touchpad", w), "touchpad", w),
+        device: DeviceSettings::from_table(&section(root, "", "device", w), "device", w),
     };
-    Ok((config, warn))
+    (config, warn)
 }
 
 /// The defaults as TOML, for `palmrest --print-config` and the install script.

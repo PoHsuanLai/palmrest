@@ -52,7 +52,7 @@ daemon, `sys` and the CLI verbs are `pub(crate)`; the one public entry to them i
 | L4 tracker and actions | `tracker` (`Tracker::step`, `Out`), `action` (`Gesture`, `Action`, `plan`) | pure composition: `Tracker::step(self, &Frame, now) -> (Self, Vec<Out>)` | `pub` |
 | L5 outputs model | `outputs` (`Emitter`, `RecordingEmitter`, `pad`, `events`) | the seam and the models of what is written | `pub` |
 | L6 tools | `recording`, `replay` (`replay`, `feed`, `outs`, `compare`) | pure: feed recorded reads through the core | `pub` |
-| L7 effects | `daemon` (`reader`, `socket`, `discover`, `hidraw`, `evdev`, `devices`, `dispatch`, `spawn`, `record`, `latency`, `source`, `uinput`, `sys`) | threads, sockets, nodes, clocks, uinput, ioctls | `pub(crate)` |
+| L7 effects | `daemon` (`reader`, `socket`, `discover`, `hidraw`, `evdev`, `devices`, `dispatch`, `record`, `latency`, `source`, `uinput`, `sys`) | threads, sockets, nodes, clocks, uinput, ioctls | `pub(crate)` |
 | L8 entry | `command` | argument parsing, one `run(args)`; reads `std::env` once into `daemon::Env` | `pub` (one fn) |
 
 `recording` and `replay` stay public because the acceptance suite and the `palmrest replay`
@@ -101,7 +101,8 @@ decision vs lock parameters, contact tracking vs palm turn, one file per scenari
 | Threads, sockets, discovery, backoff, nodes | `daemon` |
 | Subscribers of the socket: ids, caps, budgets, the joint claim and lock | `daemon::socket::{server, client, limits}` |
 | Who has the seat, and what a connection is to the daemon (shell, other program, stranger) | `daemon::socket::seat` (`SeatFile`, `peer_of`), `daemon::socket::shell` (`Steering`, `ShellCheck`) |
-| Programs a gesture runs, and their reaping | `daemon::spawn` |
+| Actions that need the person's session (asked of the shell, never run here) | `action::Effect::Host`, `palmrest_protocol::HostAction`, `ToHost::Run` |
+| The person's settings laid over the machine's | `config::layer`, `ToDaemon::UserConfig` |
 | What the shell says about the lock screen | `palmrest_protocol::ToDaemon::SessionLock`, `Tracker::with_session_lock` |
 | The virtual devices: what each is, asking the input service for them, the direct fallback | `daemon::uinput::{caps, emitter, direct, route}` |
 | When to rebuild the devices after a cut, and when to give up | `daemon::devices` |

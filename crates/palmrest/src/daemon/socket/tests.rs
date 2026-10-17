@@ -8,8 +8,8 @@ use super::shell::tests::shell_of;
 use super::shell::{Origin, Steering, Vouch};
 use super::{FromSocket, SeatFile, SocketHandle, ToSocket, aggregate, aggregate_lock, bind, spawn};
 use palmrest_protocol::{
-    self as protocol, ActiveTouch, DeviceInfo, Filter, LockState, Over, PROTOCOL_VERSION, TapKind,
-    ToDaemon, ToHost, Topic,
+    self as protocol, ActiveTouch, DeviceInfo, Filter, HostAction, LockState, Over,
+    PROTOCOL_VERSION, TapKind, ToDaemon, ToHost, Topic,
 };
 use rustix::event::{EventfdFlags, eventfd};
 use rustix::fd::OwnedFd;
@@ -462,5 +462,94 @@ fn a_user_switch_closes_the_connections_of_the_one_who_left() {
         s.claims.try_recv(),
         Ok(FromSocket::Session(LockState::Locked)),
         "the session is locked again for whoever comes next"
+    );
+}
+
+#[test]
+fn only_the_shell_is_asked_to_run_an_action() {
+    let mut s = Stepped::new("run");
+    let shell = s.subscribe();
+    let other = s.connect(Role::Other);
+    // Even a shell that narrowed its filter is asked.
+    rustix::net::send(
+        &shell,
+        &protocol::encode(&ToDaemon::Subscribe {
+            filter: Filter::Only(vec![Topic::Tap]),
+        }),
+        SendFlags::NOSIGNAL,
+    )
+    .unwrap();
+    assert_eq!(s.server.step(), Flow::Continue);
+    let action = HostAction::Command {
+        argv: vec!["notify-send".into(), "hi".into()],
+    };
+    s.handle.send(ToSocket::Run(action.clone()));
+    assert_eq!(s.server.step(), Flow::Continue);
+    let asked = ToHost::Run { action };
+    assert_eq!(queued(&shell).last(), Some(&asked));
+    assert!(
+        !queued(&other).contains(&asked),
+        "a program that is not the shell is not asked to run anything"
+    );
+}
+
+#[test]
+fn the_persons_settings_are_believed_from_the_shell_and_go_with_the_person() {
+    let mut s = Stepped::new("settings");
+    let shell = s.subscribe();
+    let other = s.connect(Role::Other);
+    let send = |fd: &OwnedFd, toml: &str| {
+        rustix::net::send(
+            fd,
+            &protocol::encode(&ToDaemon::UserConfig { toml: toml.into() }),
+            SendFlags::NOSIGNAL,
+        )
+        .unwrap();
+    };
+    send(&other, "[scroll]\nspeed = 1\n");
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert!(
+        s.claims.try_recv().is_err(),
+        "another program's settings are not read"
+    );
+
+    send(&shell, "[scroll]\nspeed = 40\n");
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(
+        s.claims.try_recv(),
+        Ok(FromSocket::UserConfig(Some(
+            "[scroll]\nspeed = 40\n".into()
+        )))
+    );
+
+    send(&shell, "  \n");
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(
+        s.claims.try_recv(),
+        Ok(FromSocket::UserConfig(None)),
+        "blank takes the layer away"
+    );
+
+    send(&shell, &"x".repeat(protocol::USER_CONFIG_MAX_BYTES + 1));
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert!(
+        s.claims.try_recv().is_err(),
+        "a text over the bound is not read"
+    );
+
+    send(&shell, "[scroll]\nspeed = 41\n");
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert!(matches!(
+        s.claims.try_recv(),
+        Ok(FromSocket::UserConfig(Some(_)))
+    ));
+    seat_file(&s.dir, Some(me() + 1));
+    s.server.look_at_seat();
+    s.handle.send(ToSocket::Msg(TOUCHES));
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(
+        s.claims.try_recv(),
+        Ok(FromSocket::UserConfig(None)),
+        "the next person does not inherit the settings"
     );
 }

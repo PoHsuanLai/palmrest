@@ -1,7 +1,7 @@
-//! Carrying out a tracker's outputs: socket messages, virtual device frames, desktop actions.
+//! Carrying out a tracker's outputs: socket messages, virtual device frames, and the actions that
+//! are keys or are asked of the shell.
 
 use super::socket::{SocketHandle, ToSocket};
-use super::spawn::Spawner;
 use crate::action::{Desktop, Effect, plan};
 use crate::outputs::Emitter;
 use crate::tracker::Out;
@@ -12,7 +12,6 @@ pub fn dispatch(
     outs: Vec<Out>,
     socket: &SocketHandle,
     emitter: &mut dyn Emitter,
-    spawner: &Spawner,
     desktop: Desktop,
 ) {
     for o in outs {
@@ -26,8 +25,8 @@ pub fn dispatch(
             Out::Key(k) => emitter.key(k),
             Out::Action(a) => match plan(a, desktop) {
                 Effect::Key(k) => emitter.key(&k),
-                Effect::Spawn(argv) => {
-                    spawner.run(&argv);
+                Effect::Host(action) => {
+                    socket.send(ToSocket::Run(action));
                     Ok(())
                 }
                 Effect::Nothing => Ok(()),

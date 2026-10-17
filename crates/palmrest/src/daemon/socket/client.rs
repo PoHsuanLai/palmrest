@@ -4,7 +4,9 @@
 use super::limits::PACKETS_PER_PASS;
 use super::seat::{Peer, peer_of};
 use super::shell::Origin;
-use palmrest_protocol::{self as protocol, Filter, LockState, Over, ToDaemon, ToHost};
+use palmrest_protocol::{
+    self as protocol, Filter, LockState, Over, ToDaemon, ToHost, USER_CONFIG_MAX_BYTES,
+};
 use rustix::fd::{AsFd, OwnedFd};
 use rustix::io::Errno;
 use rustix::net::{RecvFlags, SendFlags};
@@ -33,6 +35,8 @@ pub(super) struct Client {
     over: Over,
     /// What it last said about the session's lock; `None` until it says.
     lock: Option<LockState>,
+    /// The person's settings it sent since the server last took them.
+    config: Option<String>,
 }
 
 impl Client {
@@ -45,6 +49,7 @@ impl Client {
             filter: Filter::All,
             over: Over::NotOurs,
             lock: None,
+            config: None,
         }
     }
 
@@ -90,6 +95,11 @@ impl Client {
         }
     }
 
+    /// The person's settings the shell sent since the last call, if it sent any (the latest one).
+    pub(super) fn take_user_config(&mut self) -> Option<String> {
+        self.config.take()
+    }
+
     /// Reads at most `PACKETS_PER_PASS` packets and applies them, as `active`'s seat makes this
     /// subscriber's word count. `Gone` when the subscriber closed or reading failed; what is still
     /// queued is read next pass, as `poll` reports it.
@@ -108,7 +118,7 @@ impl Client {
     }
 
     /// What a subscriber's message does. Anyone served may subscribe and may say the session is
-    /// locked (the safe word); only the shell is believed about the pointer and an unlocked session.
+    /// locked (the safe word); only the shell is believed about the pointer, an unlocked session and the person's settings.
     fn apply(&mut self, packet: &[u8], peer: Peer) {
         match (protocol::decode::<ToDaemon>(packet), peer) {
             (Ok(ToDaemon::Subscribe { filter }), Peer::Shell | Peer::Plain) => {
@@ -123,6 +133,14 @@ impl Client {
                 Peer::Plain,
             ) => {
                 self.lock = Some(LockState::Locked);
+            }
+            (Ok(ToDaemon::UserConfig { toml }), Peer::Shell)
+                if toml.len() <= USER_CONFIG_MAX_BYTES =>
+            {
+                self.config = Some(toml);
+            }
+            (Ok(ToDaemon::UserConfig { .. }), Peer::Shell) => {
+                eprintln!("palmrest: ignoring settings larger than {USER_CONFIG_MAX_BYTES} bytes");
             }
             (Ok(_), _) => {}
             (Err(e), _) => eprintln!("palmrest: ignoring a malformed subscriber message: {e}"),

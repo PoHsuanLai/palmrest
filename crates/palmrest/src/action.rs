@@ -6,6 +6,7 @@
 
 use crate::config::lenient::{Setting, Warning};
 use crate::keys::{Key, KeyCombo};
+use palmrest_protocol::HostAction;
 use serde::{Deserialize, Serialize};
 use toml::Value;
 
@@ -162,7 +163,9 @@ impl Desktop {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
     Key(KeyCombo),
-    Spawn(Vec<String>),
+    /// Ask the shell to do it in the person's session: the daemon is a system service, with no
+    /// session of its own to run a program or a shell command in.
+    Host(HostAction),
     Nothing,
 }
 
@@ -175,31 +178,39 @@ pub fn plan(a: &Action, desktop: Desktop) -> Effect {
         (Action::WorkspacePrev, Desktop::Kde) => kwin("Switch One Desktop to the Left"),
         (Action::WorkspaceNext, Desktop::Kde) => kwin("Switch One Desktop to the Right"),
         (Action::WorkspaceOverview, Desktop::Kde) => kwin("Overview"),
-        (Action::WorkspacePrev, _) => spawn(&["sill", "workspace", "prev"]),
-        (Action::WorkspaceNext, _) => spawn(&["sill", "workspace", "next"]),
-        (Action::ShellIpc(s), _) => Effect::Spawn(
-            std::iter::once("sill")
-                .chain(s.split_whitespace())
-                .map(str::to_owned)
-                .collect(),
-        ),
-        (Action::Command(argv), _) if !argv.is_empty() => Effect::Spawn(argv.clone()),
+        (Action::WorkspacePrev, _) => Effect::Host(HostAction::WorkspacePrev),
+        (Action::WorkspaceNext, _) => Effect::Host(HostAction::WorkspaceNext),
+        (Action::WorkspaceOverview, _) => Effect::Host(HostAction::WorkspaceOverview),
+        (Action::ShellIpc(s), _) => bounded(HostAction::Shell {
+            words: s.split_whitespace().map(str::to_owned).collect(),
+        }),
+        (Action::Command(argv), _) => bounded(HostAction::Command { argv: argv.clone() }),
         _ => Effect::Nothing,
     }
 }
 
-fn kwin(shortcut: &str) -> Effect {
-    spawn(&[
-        "qdbus-qt6",
-        "org.kde.kglobalaccel",
-        "/component/kwin",
-        "org.kde.kglobalaccel.Component.invokeShortcut",
-        shortcut,
-    ])
+/// `action` as an effect when its words fit what the shell is asked for.
+fn bounded(action: HostAction) -> Effect {
+    if action.fits() {
+        Effect::Host(action)
+    } else {
+        Effect::Nothing
+    }
 }
 
-fn spawn(argv: &[&str]) -> Effect {
-    Effect::Spawn(argv.iter().map(|s| (*s).to_owned()).collect())
+fn kwin(shortcut: &str) -> Effect {
+    Effect::Host(HostAction::Command {
+        argv: [
+            "qdbus-qt6",
+            "org.kde.kglobalaccel",
+            "/component/kwin",
+            "org.kde.kglobalaccel.Component.invokeShortcut",
+            shortcut,
+        ]
+        .iter()
+        .map(|s| (*s).to_owned())
+        .collect(),
+    })
 }
 
 #[cfg(test)]
@@ -304,31 +315,28 @@ mod tests {
     #[test]
     fn plan_table() {
         let kde_left = plan(&Action::WorkspacePrev, Desktop::Kde);
-        assert!(
-            matches!(&kde_left, Effect::Spawn(v) if v.last().map(String::as_str) == Some("Switch One Desktop to the Left"))
-        );
+        assert!(matches!(
+            &kde_left,
+            Effect::Host(HostAction::Command { argv })
+                if argv.last().map(String::as_str) == Some("Switch One Desktop to the Left")
+        ));
         assert_eq!(
             plan(&Action::Back, Desktop::Other),
             Effect::Key(KeyCombo::alt(Key::LEFT))
         );
-        assert_eq!(
-            plan(&Action::WorkspaceNext, Desktop::Other),
-            spawn(&["sill", "workspace", "next"])
-        );
-        for (a, want) in [
-            (Action::WorkspacePrev, "prev"),
-            (Action::WorkspaceNext, "next"),
-        ] {
-            assert_eq!(
-                plan(&a, Desktop::Quire),
-                spawn(&["sill", "workspace", want])
-            );
+        for desktop in [Desktop::Quire, Desktop::Other] {
+            for (a, want) in [
+                (Action::WorkspacePrev, HostAction::WorkspacePrev),
+                (Action::WorkspaceNext, HostAction::WorkspaceNext),
+                (Action::WorkspaceOverview, HostAction::WorkspaceOverview),
+            ] {
+                assert_eq!(
+                    plan(&a, desktop),
+                    Effect::Host(want),
+                    "{a:?} on {desktop:?}"
+                );
+            }
         }
-        assert_eq!(
-            plan(&Action::WorkspaceOverview, Desktop::Quire),
-            Effect::Nothing,
-            "no overview command is defined for quire yet"
-        );
         assert_eq!(
             plan(&Action::Back, Desktop::Quire),
             Effect::Key(KeyCombo::alt(Key::LEFT))
@@ -341,7 +349,23 @@ mod tests {
         );
         assert_eq!(
             plan(&Action::ShellIpc("dock toggle".into()), Desktop::Quire),
-            spawn(&["sill", "dock", "toggle"])
+            Effect::Host(HostAction::Shell {
+                words: vec!["dock".into(), "toggle".into()]
+            })
+        );
+        assert_eq!(
+            plan(
+                &Action::Command(vec!["notify-send".into(), "hi".into()]),
+                Desktop::Other
+            ),
+            Effect::Host(HostAction::Command {
+                argv: vec!["notify-send".into(), "hi".into()]
+            })
+        );
+        assert_eq!(
+            plan(&Action::ShellIpc("w ".repeat(17)), Desktop::Other),
+            Effect::Nothing,
+            "a line over the bounds asks for nothing"
         );
     }
 }

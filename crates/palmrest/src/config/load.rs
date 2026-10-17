@@ -47,6 +47,8 @@ pub fn first_directory(value: Option<String>) -> Option<PathBuf> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Loaded {
     pub config: Config,
+    /// The file's text when it read and parsed, else empty: what the person's layer is laid over.
+    pub text: String,
     pub source: Option<PathBuf>,
     pub warnings: Vec<Warning>,
 }
@@ -56,16 +58,27 @@ pub struct Loaded {
 /// the file says.
 pub fn load(dir: Option<&Path>) -> Loaded {
     let found = dir.map(|d| d.join(FILE_NAME)).filter(|p| p.exists());
-    let (config, warnings) = match &found {
-        None => (Config::default(), Vec::new()),
+    let (config, text, warnings) = match &found {
+        None => (Config::default(), String::new(), Vec::new()),
         Some(p) => match read_regular(p) {
-            Ok(text) => parse(&text)
-                .unwrap_or_else(|e| (Config::default(), vec![whole_file(p, e.to_string())])),
-            Err(e) => (Config::default(), vec![whole_file(p, e.to_string())]),
+            Ok(text) => match parse(&text) {
+                Ok((config, warnings)) => (config, text, warnings),
+                Err(e) => (
+                    Config::default(),
+                    String::new(),
+                    vec![whole_file(p, e.to_string())],
+                ),
+            },
+            Err(e) => (
+                Config::default(),
+                String::new(),
+                vec![whole_file(p, e.to_string())],
+            ),
         },
     };
     Loaded {
         config,
+        text,
         source: found,
         warnings,
     }

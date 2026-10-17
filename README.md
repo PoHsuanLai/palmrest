@@ -14,10 +14,11 @@ node ──read──► Sensor::decode ──► stamp ──► Tracker::step 
      (bytes)   (Vec<Frame>, mm)   (time)    (pure state)              │
                                                                    ├─ Host(ToHost) ─► socket thread ─► subscribers
                                                                    ├─ Pad / Wheel / Key ─► Emitter ─► input service (turnstile)
-                                                                   └─ Action ─► action::plan ─► spawn
+                                                                   └─ Action ─► action::plan ─► key (input service) | ToHost::Run (the shell runs it)
 the shell ── PointerOver ──► socket thread ── claim ──► Tracker::claim (silences foreign outputs)
 subscribers ── SessionLock ──► socket thread ── lock ──► Tracker::with_session_lock (no gesture keys or actions)
-gestures.toml ── inotify, 30 ms debounce ──► Tracker::with_config
+gestures.toml ── inotify, 30 ms debounce ──┐
+the shell ── UserConfig (the person's file) ──┴► config::layered ──► Tracker::with_config
 ```
 
 The `Sensor` seam mirrors `Emitter` on the output side: `MagicMouseHid` (the hidraw node,
@@ -86,7 +87,7 @@ applies at the next reconnect.
 
 `/run/palmrest/events.sock`, `SOCK_SEQPACKET`, mode 0666 (the daemon serves only the person at the seat; see Architecture), one JSON message per
 packet, adjacently tagged (`{"kind": "...", "v": {...}}`). The first packet on a connection is
-`Hello`; a client checks `version` (`PROTOCOL_VERSION = 1`) before reading on.
+`Hello`; a client checks `version` (`PROTOCOL_VERSION = 2`) before reading on.
 
 ```rust
 pub enum ToHost {
@@ -96,8 +97,10 @@ pub enum ToHost {
     Tap { kind: TapKind, t_ns: u64 },
     Touches { active: ActiveTouch },
     DeviceGone,
+    Run { action: HostAction },      // to the shell's connection only, whatever its filter
 }
-pub enum ToDaemon { PointerOver { over: Over }, Subscribe { filter: Filter }, SessionLock { state: LockState } }
+pub enum ToDaemon { PointerOver { over: Over }, Subscribe { filter: Filter }, SessionLock { state: LockState }, UserConfig { toml: String } }
+pub enum HostAction { WorkspacePrev, WorkspaceNext, WorkspaceOverview, Shell { words: Vec<String> }, Command { argv: Vec<String> } }
 pub enum Filter { All, Only(Vec<Topic>) }            // Topic: Scroll | Swipe | Tap | Touches
 pub struct DeviceInfo { name: String, path: String, vendor: u16, product: u16 }
 // Phase: MayBegin | Began | Changed | Ended | Cancelled;  Axis: X | Y;  TapKind: One | Two
@@ -107,8 +110,12 @@ pub struct DeviceInfo { name: String, path: String, vendor: u16, product: u16 }
 `SessionLock` is the lock screen's state: the shell that draws it sends `Locked` when it locks and
 `Unlocked` when it opens, and again after connecting. The session counts as locked while any
 subscriber says so, and a subscriber that disconnects stops saying it. Only the shell's `Unlocked`
-counts (another program of the person may say `Locked`, never `Unlocked`), and `PointerOver` counts
-from the shell alone. While locked no gesture
+counts (another program of the person may say `Locked`, never `Unlocked`), and `PointerOver` and
+`UserConfig` count from the shell alone. `UserConfig` is the text of the person's
+`~/.config/palmrest/gestures.toml` (at most 24 KiB; blank takes the layer away): the daemon cannot
+read a home folder, so the shell reads the file and sends it after connecting and when it changes.
+`Run` asks the shell to carry out a gesture's action in the person's session (the workspace steps,
+a shell line, a program); the daemon has no session of its own. While locked no gesture
 runs a key or a desktop action; scrolling and the stream to subscribers go on.
 
 Scroll px are in finger direction (+x right, +y toward the user) with every gain applied; the

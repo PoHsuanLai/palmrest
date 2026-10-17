@@ -10,7 +10,7 @@ use super::limits::{
 use super::seat::{Peer, SeatFile, peer_of};
 use super::shell::Vouch;
 use super::{FromSocket, ToSocket, aggregate, aggregate_lock};
-use palmrest_protocol::{DeviceInfo, LockState, Over, PROTOCOL_VERSION, ToHost};
+use palmrest_protocol::{DeviceInfo, HostAction, LockState, Over, PROTOCOL_VERSION, ToHost};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::fd::OwnedFd;
 use rustix::io::Errno;
@@ -80,6 +80,9 @@ pub(super) struct Server {
     looked: Instant,
     /// Says which connection is the shell.
     vouch: Box<dyn Vouch>,
+    /// The person's settings to tell the reader at the end of the pass (`None` inside: the layer
+    /// is gone).
+    config: Option<Option<String>>,
 }
 
 impl Server {
@@ -109,6 +112,7 @@ impl Server {
             looked: Instant::now(),
             seat,
             vouch,
+            config: None,
         }
     }
 
@@ -216,6 +220,8 @@ impl Server {
         if active != self.active {
             self.active = active;
             self.clients.retain(|c| c.peer(active) != Peer::Observer);
+            // Another person's settings are not this one's.
+            self.config = Some(None);
         }
         active
     }
@@ -274,9 +280,28 @@ impl Server {
                 }
                 Ok(ToSocket::Gone) => self.device = None,
                 Ok(ToSocket::Msg(m)) => self.broadcast(&m),
+                Ok(ToSocket::Run(action)) => self.ask_the_shell(action),
                 Err(mpsc::TryRecvError::Empty) => return true,
                 Err(mpsc::TryRecvError::Disconnected) => return false,
             }
+        }
+    }
+
+    /// Asks the shell of the person at the seat to carry out `action`, whatever its filter says. No
+    /// other subscriber is asked: it would run a program for someone who is not the shell.
+    fn ask_the_shell(&mut self, action: HostAction) {
+        let message = ToHost::Run { action };
+        let active = self.active;
+        let mut asked = 0usize;
+        self.clients.retain(|c| {
+            if c.peer(active) != Peer::Shell {
+                return true;
+            }
+            asked += 1;
+            c.greet(&message) == Link::Alive
+        });
+        if asked == 0 {
+            eprintln!("palmrest: a gesture's action was dropped: no shell is connected");
         }
     }
 
@@ -288,11 +313,20 @@ impl Server {
     /// broadcast removes it), so it is looked up by id and a missing one is skipped.
     fn receive(&mut self, id: ClientId) {
         let active = self.active;
+        let mut sent = None;
         let gone = self
             .clients
             .iter_mut()
             .find(|c| c.id == id)
-            .is_some_and(|c| c.pull(active) == Link::Gone);
+            .is_some_and(|c| {
+                let link = c.pull(active);
+                sent = c.take_user_config();
+                link == Link::Gone
+            });
+        if let Some(text) = sent {
+            // Blank text takes the layer away.
+            self.config = Some((!text.trim().is_empty()).then_some(text));
+        }
         if gone {
             self.clients.retain(|c| c.id != id);
         }
@@ -300,6 +334,9 @@ impl Server {
 
     /// Tells the reader what the subscribers jointly say, when it changed.
     fn publish(&mut self) {
+        if let Some(config) = self.config.take() {
+            let _ = self.notes.send(FromSocket::UserConfig(config));
+        }
         let claim = aggregate(self.clients.iter().map(|c| c.pointer(self.active)));
         if claim != self.claim {
             self.claim = claim;

@@ -20,7 +20,7 @@ mod server;
 mod shell;
 
 use limits::QUEUE_MAX;
-use palmrest_protocol::{DeviceInfo, LockState, Over, ToHost};
+use palmrest_protocol::{DeviceInfo, HostAction, LockState, Over, ToHost};
 use rustix::event::{EventfdFlags, eventfd};
 use rustix::fd::OwnedFd;
 use rustix::net::{AddressFamily, SocketAddrUnix, SocketFlags, SocketType};
@@ -45,15 +45,19 @@ pub enum ToSocket {
     Gone,
     /// A message for every admitting subscriber.
     Msg(ToHost),
+    /// An action for the shell of the person at the seat, and for nobody else.
+    Run(HostAction),
 }
 
 /// What the socket thread tells the reader: the subscribers' joint state, when it changes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FromSocket {
     /// The pointer is over a subscriber's surface, or not (11.3.14).
     Pointer(Over),
     /// A subscriber says the session is locked, or none does any more.
     Session(LockState),
+    /// The shell sent the person's settings (`None`: it sent none, or the person left the seat).
+    UserConfig(Option<String>),
 }
 
 /// The reader's end: a channel plus the eventfd that wakes the socket thread.
