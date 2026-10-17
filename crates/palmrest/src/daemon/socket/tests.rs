@@ -19,12 +19,33 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::Duration;
 
 #[test]
-fn any_lock_wins() {
-    assert_eq!(aggregate_lock([]), LockState::Unlocked);
-    assert_eq!(
-        aggregate_lock([LockState::Unlocked, LockState::Locked]),
-        LockState::Locked
-    );
+fn the_session_is_locked_unless_a_subscriber_has_said_unlocked_and_none_says_locked() {
+    use LockState::{Locked, Unlocked};
+    let table: &[(&str, Vec<Option<LockState>>, LockState)] = &[
+        ("no subscriber is connected", vec![], Locked),
+        ("one that has said nothing", vec![None], Locked),
+        ("several that have said nothing", vec![None, None], Locked),
+        ("one that says unlocked", vec![Some(Unlocked)], Unlocked),
+        (
+            "unlocked beside one that is silent",
+            vec![None, Some(Unlocked)],
+            Unlocked,
+        ),
+        ("one that says locked", vec![Some(Locked)], Locked),
+        (
+            "locked beats unlocked",
+            vec![Some(Unlocked), Some(Locked)],
+            Locked,
+        ),
+        (
+            "locked beats unlocked, either order",
+            vec![Some(Locked), Some(Unlocked), None],
+            Locked,
+        ),
+    ];
+    for (name, said, want) in table {
+        assert_eq!(aggregate_lock(said.iter().copied()), *want, "{name}");
+    }
 }
 
 #[test]
@@ -261,7 +282,7 @@ fn a_full_queue_drops_messages_instead_of_blocking_the_reader() {
 }
 
 #[test]
-fn the_session_is_locked_while_a_subscriber_says_so() {
+fn the_session_is_unlocked_only_while_a_subscriber_says_so() {
     let mut s = Stepped::new("lock");
     let shell = s.subscribe();
     let other = s.subscribe();
@@ -273,25 +294,45 @@ fn the_session_is_locked_while_a_subscriber_says_so() {
         )
         .unwrap();
     };
-    tell(&shell, LockState::Locked);
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert!(
+        s.claims.try_recv().is_err(),
+        "subscribers that have said nothing leave it locked, and that is no news"
+    );
+
+    tell(&shell, LockState::Unlocked);
     assert_eq!(s.server.step(), Flow::Continue);
     assert_eq!(
         s.claims.try_recv(),
-        Ok(FromSocket::Session(LockState::Locked))
+        Ok(FromSocket::Session(LockState::Unlocked))
+    );
+
+    tell(&other, LockState::Locked);
+    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(
+        s.claims.try_recv(),
+        Ok(FromSocket::Session(LockState::Locked)),
+        "any subscriber can lock it"
     );
 
     tell(&other, LockState::Unlocked);
     assert_eq!(s.server.step(), Flow::Continue);
-    assert!(
-        s.claims.try_recv().is_err(),
-        "another subscriber cannot unlock it"
+    assert_eq!(
+        s.claims.try_recv(),
+        Ok(FromSocket::Session(LockState::Unlocked))
     );
 
     drop(shell);
     assert_eq!(s.server.step(), Flow::Continue);
+    assert!(
+        s.claims.try_recv().is_err(),
+        "the other subscriber still says unlocked"
+    );
+    drop(other);
+    assert_eq!(s.server.step(), Flow::Continue);
     assert_eq!(
         s.claims.try_recv(),
-        Ok(FromSocket::Session(LockState::Unlocked)),
-        "a subscriber that leaves stops saying it"
+        Ok(FromSocket::Session(LockState::Locked)),
+        "with no subscriber connected the session counts as locked"
     );
 }

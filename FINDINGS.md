@@ -143,6 +143,12 @@ Mouse 1's report 0x29); `touch.rs` (12-bit wrap of deltas, now on every sensor's
   send `ToDaemon::SessionLock` when the lock service reports Locked or Unlocked (interface ask in
   the lane report). Neither casement nor sill publishes a lock state a daemon outside the session
   can read, and logind's `LockedHint` is not set by sill's locker.
+- *Fail safe without a shell (NEW-QDH-2, 2026-10-17).* The session counts as locked unless a subscriber has said
+  Unlocked and none says Locked (`aggregate_lock`): with no subscriber connected (a shell restart, or palmrest
+  restarting during a lock), or only silent ones, gesture keys and desktop actions are dropped, while pointer
+  movement, scrolling and the stream to subscribers go on. The daemon's tracker and the socket start Locked.
+  shell-host sends `SessionLock` first on every connect, so an unlocked desktop opens at once. Cost: a few
+  hundred milliseconds of no gesture actions after palmrest starts, until the shell has connected.
 - *Shared bounded reader (INPUT-12).* `config/load.rs` has its own bounded regular-file read;
   the one shared reader belongs in chordkit and moves there when it exists.
 

@@ -77,12 +77,24 @@ pub fn aggregate(overs: impl IntoIterator<Item = Over>) -> Over {
     }
 }
 
-/// The session is locked if any subscriber says so; one that disconnects stops saying it.
-pub fn aggregate_lock(locks: impl IntoIterator<Item = LockState>) -> LockState {
-    if locks.into_iter().any(|l| l == LockState::Locked) {
-        LockState::Locked
-    } else {
+/// Whether the session counts as locked, from what each subscriber last said (`None`: nothing
+/// yet). Locked is the safe answer, so it wins whenever it is in doubt: any subscriber says
+/// locked, or nobody has said unlocked (no subscriber is connected, or the ones connected have
+/// said nothing). A lock screen the shell has not reported must never let a gesture run a key or
+/// a desktop command. Only a subscriber saying unlocked, with none saying locked, opens it.
+pub fn aggregate_lock(locks: impl IntoIterator<Item = Option<LockState>>) -> LockState {
+    let (mut unlocked, mut locked) = (false, false);
+    for said in locks {
+        match said {
+            Some(LockState::Unlocked) => unlocked = true,
+            Some(LockState::Locked) => locked = true,
+            None => {}
+        }
+    }
+    if unlocked && !locked {
         LockState::Unlocked
+    } else {
+        LockState::Locked
     }
 }
 

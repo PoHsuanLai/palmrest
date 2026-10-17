@@ -90,7 +90,9 @@ impl Server {
             device: None,
             notes,
             claim: Over::NotOurs,
-            lock: LockState::Unlocked,
+            // Locked until a subscriber says otherwise: the tracker starts locked too, so the two
+            // agree and nothing is announced for a state nobody changed.
+            lock: LockState::Locked,
         }
     }
 

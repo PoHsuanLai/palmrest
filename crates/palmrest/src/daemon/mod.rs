@@ -21,6 +21,7 @@ use crate::outputs::Emitter;
 use crate::tracker::Tracker;
 use devices::{Devices, Factory};
 pub use env::Env;
+use palmrest_protocol::LockState;
 use spawn::Spawner;
 use std::sync::mpsc;
 use uinput::{LiveRoute, Origin, UinputEmitter};
@@ -65,7 +66,9 @@ pub fn run(env: &Env, origin: Origin) -> Result<(), String> {
         devices: Devices::new(factory, &loaded.config, now),
         spawner,
         desktop: env.desktop,
-        tracker: Tracker::new(loaded.config),
+        // Locked until the shell says otherwise: a gesture runs no key or desktop action on a
+        // session whose state nobody has reported.
+        tracker: Tracker::new(loaded.config).with_session_lock(LockState::Locked),
     };
     reader.run();
     Ok(())

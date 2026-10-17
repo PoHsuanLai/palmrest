@@ -24,7 +24,8 @@ pub(super) struct Client {
     fd: OwnedFd,
     filter: Filter,
     pub(super) over: Over,
-    pub(super) lock: LockState,
+    /// What it last said about the session's lock; `None` until it says.
+    pub(super) lock: Option<LockState>,
 }
 
 impl Client {
@@ -34,7 +35,7 @@ impl Client {
             fd,
             filter: Filter::All,
             over: Over::NotOurs,
-            lock: LockState::Unlocked,
+            lock: None,
         }
     }
 
@@ -77,7 +78,7 @@ impl Client {
         match protocol::decode::<ToDaemon>(packet) {
             Ok(ToDaemon::PointerOver { over }) => self.over = over,
             Ok(ToDaemon::Subscribe { filter }) => self.filter = filter,
-            Ok(ToDaemon::SessionLock { state }) => self.lock = state,
+            Ok(ToDaemon::SessionLock { state }) => self.lock = Some(state),
             Err(e) => eprintln!("palmrest: ignoring a malformed subscriber message: {e}"),
         }
     }
