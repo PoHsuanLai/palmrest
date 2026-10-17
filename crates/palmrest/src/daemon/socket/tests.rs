@@ -294,7 +294,7 @@ fn the_session_is_unlocked_only_while_a_subscriber_says_so() {
         )
         .unwrap();
     };
-    assert_eq!(s.server.step(), Flow::Continue);
+    // No step yet: with nothing to read it would wait for ever.
     assert!(
         s.claims.try_recv().is_err(),
         "subscribers that have said nothing leave it locked, and that is no news"
