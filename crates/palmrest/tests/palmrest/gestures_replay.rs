@@ -2,14 +2,14 @@
 //! (rejection on, touchpad output): swipe trigger, double-taps, one-finger swipe, rejection,
 //! suppression.
 
-use palmrest::action::Action;
+use palmrest::action::Deferred;
 use palmrest::config::{Config, Rejection};
 use palmrest::keys::{Key, KeyCombo};
 use palmrest::recording::Record;
 use palmrest::replay::{Timing, feed, outs, replay};
 use palmrest::stamp::StampClock;
 use palmrest::{Out, Tracker};
-use palmrest_protocol::{Axis, LockState, Over, Phase, TapKind, ToHost};
+use palmrest_protocol::{Axis, LockState, Over, Phase, TapKind, ToHost, Workspace};
 
 fn run(name: &str) -> Vec<Out> {
     outs(&replay(
@@ -45,10 +45,10 @@ fn run_from(mut t: Tracker, name: &str) -> Vec<Out> {
     all
 }
 
-fn actions(outs: &[Out]) -> Vec<Action> {
+fn actions(outs: &[Out]) -> Vec<Deferred> {
     outs.iter()
         .filter_map(|o| {
-            if let Out::Action(a) = o {
+            if let Out::Deferred(a) = o {
                 Some(a.clone())
             } else {
                 None
@@ -86,12 +86,15 @@ fn taps(outs: &[Out]) -> Vec<TapKind> {
 
 #[test]
 fn swipe_trigger() {
-    const CASES: &[(&str, &[Action])] = &[
-        ("swipe_200_right", &[Action::WorkspacePrev]),
-        ("swipe_200_left", &[Action::WorkspaceNext]),
+    const CASES: &[(&str, &[Deferred])] = &[
+        ("swipe_200_right", &[Deferred::Workspace(Workspace::Prev)]),
+        ("swipe_200_left", &[Deferred::Workspace(Workspace::Next)]),
         ("swipe_199", &[]),
-        ("swipe_vertical_then_horizontal", &[Action::WorkspacePrev]),
-        ("swipe_600_fast", &[Action::WorkspacePrev]),
+        (
+            "swipe_vertical_then_horizontal",
+            &[Deferred::Workspace(Workspace::Prev)],
+        ),
+        ("swipe_600_fast", &[Deferred::Workspace(Workspace::Prev)]),
     ];
     for &(name, want) in CASES {
         assert_eq!(actions(&run(name)), want, "{name}");
@@ -133,8 +136,11 @@ fn a_two_finger_swipe_never_scrolls_sideways() {
 
 #[test]
 fn two_finger_double_tap() {
-    const CASES: &[(&str, &[Action])] = &[
-        ("tap_two_double", &[Action::WorkspaceOverview]),
+    const CASES: &[(&str, &[Deferred])] = &[
+        (
+            "tap_two_double",
+            &[Deferred::Workspace(Workspace::Overview)],
+        ),
         ("tap_two_gap400", &[]),
         ("tap_two_moving45", &[]),
         ("tap_two_click", &[]),

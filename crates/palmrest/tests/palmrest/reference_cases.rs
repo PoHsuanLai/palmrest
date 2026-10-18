@@ -3,7 +3,7 @@
 //! of the committed fixture with the same points. The cases and their expected values are
 //! frozen from the retired Python daemon's test suite; points are in its unsigned reading.
 
-use palmrest::action::{Action, Desktop, Effect, plan};
+use palmrest::action::{Action, Deferred, Desktop, Effect, plan};
 use palmrest::config::{Config, Count, ForeignOutput, Fraction, Rejection};
 use palmrest::feel::{
     AxisLock, CurveParams, Hold, LockEvent, LockParams, Sample, Threshold, WheelDelta,
@@ -11,7 +11,7 @@ use palmrest::feel::{
 use palmrest::gestures::{FingerDirection, SwipeEvent, SwipeG};
 use palmrest::replay::{Timing, outs, replay};
 use palmrest::{Mono, Out};
-use palmrest_protocol::HostAction;
+use palmrest_protocol::{HostAction, Workspace};
 use std::time::Duration;
 
 // ---- the case helpers ---------------------------------------------------------------------
@@ -83,7 +83,7 @@ fn reference_config() -> Config {
 }
 
 /// The wheel hi-res totals (h, v) and the workspace actions of a fixture.
-fn run(name: &str) -> ((i32, i32), Vec<Action>) {
+fn run(name: &str) -> ((i32, i32), Vec<Deferred>) {
     let all = outs(&replay(
         &crate::support::load(name),
         reference_config(),
@@ -96,7 +96,7 @@ fn run(name: &str) -> ((i32, i32), Vec<Action>) {
     let actions = all
         .iter()
         .filter_map(|o| {
-            if let Out::Action(a) = o {
+            if let Out::Deferred(a) = o {
                 Some(a.clone())
             } else {
                 None
@@ -305,7 +305,7 @@ fn two_finger_swipe_right_switches_desktop_left() {
     with_lift.push((11_000, vec![]));
     assert_eq!(swipe_run(&with_lift), [FingerDirection::Right]);
     // Fingers right: the desktop on the left; fingers left: the one on the right.
-    let kwin = |a: &Action| match plan(a, Desktop::Kde) {
+    let kwin = |a: &Action| match plan(&a.deferred().unwrap(), Desktop::Kde) {
         Effect::Host(HostAction::Command { argv }) => argv.last().cloned().unwrap(),
         other => panic!("{other:?}"),
     };
@@ -318,7 +318,10 @@ fn two_finger_swipe_right_switches_desktop_left() {
         kwin(&map.two_finger_swipe_left),
         "Switch One Desktop to the Right"
     );
-    assert_eq!(run("case_swipe_right").1, [Action::WorkspacePrev]);
+    assert_eq!(
+        run("case_swipe_right").1,
+        [Deferred::Workspace(Workspace::Prev)]
+    );
 }
 
 #[test]
@@ -337,7 +340,10 @@ fn long_two_finger_drag_switches_again_after_cooldown() {
     );
     assert_eq!(
         run("case_long_drag").1,
-        [Action::WorkspacePrev, Action::WorkspacePrev]
+        [
+            Deferred::Workspace(Workspace::Prev),
+            Deferred::Workspace(Workspace::Prev)
+        ]
     );
 }
 

@@ -42,6 +42,9 @@ fn samples() -> Vec<ToHost> {
                 argv: vec!["notify-send".into(), "hi \"there\"".into()],
             },
         },
+        ToHost::Run {
+            action: HostAction::Workspace(Workspace::Overview),
+        },
     ]
 }
 
@@ -127,7 +130,11 @@ fn the_largest_settings_text_fits_a_packet_with_every_character_escaped() {
 fn an_action_fits_when_it_has_words_in_bounds() {
     let words = |n: usize, len: usize| vec!["w".repeat(len); n];
     let cases = [
-        ("a workspace step", HostAction::WorkspaceNext, true),
+        (
+            "a workspace step",
+            HostAction::Workspace(Workspace::Next),
+            true,
+        ),
         (
             "a short command",
             HostAction::Command { argv: words(3, 8) },

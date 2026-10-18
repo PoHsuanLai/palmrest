@@ -6,7 +6,7 @@
 
 use crate::config::lenient::{Setting, Warning};
 use crate::keys::{Key, KeyCombo};
-use palmrest_protocol::HostAction;
+use palmrest_protocol::{HostAction, Workspace};
 use serde::{Deserialize, Serialize};
 use toml::Value;
 
@@ -134,6 +134,30 @@ pub fn key_of(a: &Action) -> Option<KeyCombo> {
     }
 }
 
+/// What an action needs from the person's session: everything that is not a key, which the daemon
+/// cannot do alone. The one thing that travels from the tracker to the dispatcher besides keys.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "v", rename_all = "snake_case")]
+pub enum Deferred {
+    Workspace(Workspace),
+    ShellIpc(String),
+    Command(Vec<String>),
+}
+
+impl Action {
+    /// What this action asks of the session, when it is not a key and not nothing.
+    pub fn deferred(&self) -> Option<Deferred> {
+        match self {
+            Self::WorkspacePrev => Some(Deferred::Workspace(Workspace::Prev)),
+            Self::WorkspaceNext => Some(Deferred::Workspace(Workspace::Next)),
+            Self::WorkspaceOverview => Some(Deferred::Workspace(Workspace::Overview)),
+            Self::ShellIpc(line) => Some(Deferred::ShellIpc(line.clone())),
+            Self::Command(argv) => Some(Deferred::Command(argv.clone())),
+            Self::None | Self::Back | Self::Forward | Self::SmartZoom | Self::Keys(_) => None,
+        }
+    }
+}
+
 /// The desktop the daemon runs under, from `XDG_CURRENT_DESKTOP`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
@@ -161,30 +185,27 @@ impl Desktop {
 /// What the daemon does for a non-key action.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Effect {
-    Key(KeyCombo),
     /// Ask the shell to do it in the person's session: the daemon is a system service, with no
     /// session of its own to run a program or a shell command in.
     Host(HostAction),
     Nothing,
 }
 
-/// The effect of `a` on `desktop`.
-pub fn plan(a: &Action, desktop: Desktop) -> Effect {
-    if let Some(k) = key_of(a) {
-        return Effect::Key(k);
-    }
-    match (a, desktop) {
-        (Action::WorkspacePrev, Desktop::Kde) => kwin("Switch One Desktop to the Left"),
-        (Action::WorkspaceNext, Desktop::Kde) => kwin("Switch One Desktop to the Right"),
-        (Action::WorkspaceOverview, Desktop::Kde) => kwin("Overview"),
-        (Action::WorkspacePrev, _) => Effect::Host(HostAction::WorkspacePrev),
-        (Action::WorkspaceNext, _) => Effect::Host(HostAction::WorkspaceNext),
-        (Action::WorkspaceOverview, _) => Effect::Host(HostAction::WorkspaceOverview),
-        (Action::ShellIpc(s), _) => bounded(HostAction::Shell {
+/// The effect of `deferred` on `desktop`.
+pub fn plan(deferred: &Deferred, desktop: Desktop) -> Effect {
+    match (deferred, desktop) {
+        (Deferred::Workspace(Workspace::Prev), Desktop::Kde) => {
+            kwin("Switch One Desktop to the Left")
+        }
+        (Deferred::Workspace(Workspace::Next), Desktop::Kde) => {
+            kwin("Switch One Desktop to the Right")
+        }
+        (Deferred::Workspace(Workspace::Overview), Desktop::Kde) => kwin("Overview"),
+        (Deferred::Workspace(step), _) => Effect::Host(HostAction::Workspace(*step)),
+        (Deferred::ShellIpc(s), _) => bounded(HostAction::Shell {
             words: s.split_whitespace().map(str::to_owned).collect(),
         }),
-        (Action::Command(argv), _) => bounded(HostAction::Command { argv: argv.clone() }),
-        _ => Effect::Nothing,
+        (Deferred::Command(argv), _) => bounded(HostAction::Command { argv: argv.clone() }),
     }
 }
 
@@ -313,48 +334,34 @@ mod tests {
 
     #[test]
     fn plan_table() {
-        let kde_left = plan(&Action::WorkspacePrev, Desktop::Kde);
+        let kde_left = plan(&Deferred::Workspace(Workspace::Prev), Desktop::Kde);
         assert!(matches!(
             &kde_left,
             Effect::Host(HostAction::Command { argv })
                 if argv.last().map(String::as_str) == Some("Switch One Desktop to the Left")
         ));
-        assert_eq!(
-            plan(&Action::Back, Desktop::Other),
-            Effect::Key(KeyCombo::alt(Key::LEFT))
-        );
         for desktop in [Desktop::Quire, Desktop::Other] {
-            for (a, want) in [
-                (Action::WorkspacePrev, HostAction::WorkspacePrev),
-                (Action::WorkspaceNext, HostAction::WorkspaceNext),
-                (Action::WorkspaceOverview, HostAction::WorkspaceOverview),
-            ] {
+            for step in [Workspace::Prev, Workspace::Next, Workspace::Overview] {
                 assert_eq!(
-                    plan(&a, desktop),
-                    Effect::Host(want),
-                    "{a:?} on {desktop:?}"
+                    plan(&Deferred::Workspace(step), desktop),
+                    Effect::Host(HostAction::Workspace(step)),
+                    "{step:?} on {desktop:?}"
                 );
             }
         }
         assert_eq!(
-            plan(&Action::Back, Desktop::Quire),
-            Effect::Key(KeyCombo::alt(Key::LEFT))
-        );
-        assert_eq!(plan(&Action::SmartZoom, Desktop::Kde), Effect::Nothing);
-        assert_eq!(plan(&Action::None, Desktop::Kde), Effect::Nothing);
-        assert_eq!(
-            plan(&Action::Command(vec![]), Desktop::Kde),
+            plan(&Deferred::Command(vec![]), Desktop::Kde),
             Effect::Nothing
         );
         assert_eq!(
-            plan(&Action::ShellIpc("dock toggle".into()), Desktop::Quire),
+            plan(&Deferred::ShellIpc("dock toggle".into()), Desktop::Quire),
             Effect::Host(HostAction::Shell {
                 words: vec!["dock".into(), "toggle".into()]
             })
         );
         assert_eq!(
             plan(
-                &Action::Command(vec!["notify-send".into(), "hi".into()]),
+                &Deferred::Command(vec!["notify-send".into(), "hi".into()]),
                 Desktop::Other
             ),
             Effect::Host(HostAction::Command {
@@ -362,7 +369,7 @@ mod tests {
             })
         );
         assert_eq!(
-            plan(&Action::ShellIpc("w ".repeat(17)), Desktop::Other),
+            plan(&Deferred::ShellIpc("w ".repeat(17)), Desktop::Other),
             Effect::Nothing,
             "a line over the bounds asks for nothing"
         );

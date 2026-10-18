@@ -1,6 +1,6 @@
 //! What the tracker asks the daemon to do, and how a fired gesture becomes outputs.
 
-use crate::action::{Action, Gesture, key_of};
+use crate::action::{Action, Deferred, Gesture, key_of};
 use crate::config::G4Mode;
 use crate::feel::WheelDelta;
 use crate::keys::KeyCombo;
@@ -20,8 +20,9 @@ pub enum Out {
     Wheel(WheelDelta),
     /// A key combination on the virtual keyboard (O3).
     Key(KeyCombo),
-    /// A desktop action the daemon performs (`action::plan`).
-    Action(Action),
+    /// What a gesture asks of the person's session, which the daemon plans for the desktop it
+    /// runs under (`action::plan`).
+    Deferred(Deferred),
 }
 
 /// Who asked for an action: G4 is suppressed differently from the rest.
@@ -42,10 +43,9 @@ pub fn action_outs(action: &Action, source: Source, claimed: Over, g4: G4Mode) -
     if silenced {
         return vec![];
     }
-    match (action, key_of(action)) {
-        (_, Some(k)) => vec![Out::Key(k)],
-        (Action::None | Action::SmartZoom, None) => vec![],
-        (other, None) => vec![Out::Action(other.clone())],
+    match key_of(action) {
+        Some(k) => vec![Out::Key(k)],
+        None => action.deferred().map(Out::Deferred).into_iter().collect(),
     }
 }
 
@@ -70,7 +70,7 @@ pub fn while_unlocked(session: LockState, outs: Vec<Out>) -> Vec<Out> {
         LockState::Unlocked => outs,
         LockState::Locked => outs
             .into_iter()
-            .filter(|o| !matches!(o, Out::Key(_) | Out::Action(_)))
+            .filter(|o| !matches!(o, Out::Key(_) | Out::Deferred(_)))
             .collect(),
     }
 }
@@ -87,6 +87,7 @@ pub fn tap_gesture(kind: TapKind) -> Gesture {
 mod tests {
     use super::*;
     use crate::keys::Key;
+    use palmrest_protocol::Workspace;
 
     #[test]
     fn g4_is_silent_under_a_claim_and_in_native_mode() {
@@ -125,7 +126,7 @@ mod tests {
         let outs = vec![
             Out::Host(ToHost::DeviceGone),
             Out::Key(KeyCombo::alt(Key::LEFT)),
-            Out::Action(Action::WorkspaceOverview),
+            Out::Deferred(Deferred::Workspace(Workspace::Overview)),
         ];
         assert_eq!(while_unlocked(LockState::Unlocked, outs.clone()), outs);
         assert_eq!(
@@ -148,7 +149,7 @@ mod tests {
         let o = Action::WorkspaceOverview;
         assert_eq!(
             tap_outs(TapKind::Two, &o, Over::NotOurs, 5),
-            vec![Out::Action(o.clone())]
+            vec![Out::Deferred(Deferred::Workspace(Workspace::Overview))]
         );
     }
 }

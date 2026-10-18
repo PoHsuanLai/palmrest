@@ -87,7 +87,7 @@ applies at the next reconnect.
 
 `/run/palmrest/events.sock`, `SOCK_SEQPACKET`, mode 0666 (the daemon serves only the person at the seat; see Architecture), one JSON message per
 packet, adjacently tagged (`{"kind": "...", "v": {...}}`). The first packet on a connection is
-`Hello`; a client checks `version` (`PROTOCOL_VERSION = 2`) before reading on.
+`Hello`; a client checks `version` (`PROTOCOL_VERSION = 3`) before reading on.
 
 ```rust
 pub enum ToHost {
@@ -100,7 +100,7 @@ pub enum ToHost {
     Run { action: HostAction },      // to the shell's connection only, whatever its filter
 }
 pub enum ToDaemon { PointerOver { over: Over }, Subscribe { filter: Filter }, SessionLock { state: LockState }, UserConfig { toml: String } }
-pub enum HostAction { WorkspacePrev, WorkspaceNext, WorkspaceOverview, Shell { words: Vec<String> }, Command { argv: Vec<String> } }
+pub enum HostAction { Workspace(Workspace), Shell { words: Vec<String> }, Command { argv: Vec<String> } }
 pub enum Filter { All, Only(Vec<Topic>) }            // Topic: Scroll | Swipe | Tap | Touches
 pub struct DeviceInfo { name: String, path: String, vendor: u16, product: u16 }
 // Phase: MayBegin | Began | Changed | Ended | Cancelled;  Axis: X | Y;  TapKind: One | Two

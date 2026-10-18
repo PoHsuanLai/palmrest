@@ -6,8 +6,9 @@ use thiserror::Error;
 use crate::message::ToHost;
 
 /// The protocol version carried by `Hello`.
-/// 2 added `ToHost::Run` and `ToDaemon::UserConfig` and the larger packet.
-pub const PROTOCOL_VERSION: u16 = 2;
+/// 2 added `ToHost::Run` and `ToDaemon::UserConfig` and the larger packet; 3 made the workspace
+/// steps one `HostAction::Workspace(Workspace)`. Only the current version is read.
+pub const PROTOCOL_VERSION: u16 = 3;
 /// No message is larger than this; a longer packet is not ours. Room for [`USER_CONFIG_MAX_BYTES`]
 /// of settings with every quote and line break escaped.
 pub const MAX_PACKET: usize = 64 * 1024;

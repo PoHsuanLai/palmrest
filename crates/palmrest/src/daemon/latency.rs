@@ -59,7 +59,7 @@ pub fn measure(source: &RecordedSource, records: &[Record], cfg: Config) -> Late
                 }
                 Out::Wheel(w) => wheel_events(w),
                 Out::Key(k) => key_events(k),
-                Out::Host(_) | Out::Action(_) => vec![],
+                Out::Host(_) | Out::Deferred(_) => vec![],
             };
             bytes += events.iter().map(|e| e.to_bytes().len()).sum::<usize>();
         }
