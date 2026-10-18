@@ -83,12 +83,11 @@ crate::settings_struct! {
 
 impl Setting for ActionMap {
     fn read(v: &Value, key: &str, warn: &mut Vec<Warning>) -> Option<Self> {
-        match v {
-            Value::Table(t) => Some(Self::from_table(t, key, warn)),
-            _ => {
-                warn.push(Warning::unusable(key, "is not a table"));
-                None
-            }
+        if let Value::Table(t) = v {
+            Some(Self::from_table(t, key, warn))
+        } else {
+            warn.push(Warning::unusable(key, "is not a table"));
+            None
         }
     }
 }

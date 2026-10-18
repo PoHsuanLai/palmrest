@@ -72,12 +72,11 @@ impl Slots {
                 None,
             ),
             (Sync::Dropping, EV_SYN, SYN_REPORT) => (self.resynced(), None),
-            (Sync::Dropping, _, _) => (self, None),
             (Sync::InStep, EV_SYN, SYN_REPORT) => self.frame(e, res),
             (Sync::InStep, EV_ABS, code) => (self.abs(code, ev.value), None),
             (Sync::InStep, EV_KEY, code) => (self.key(code, ev.value), None),
             (Sync::InStep, EV_REL, code) => (self.rel(code, ev.value), None),
-            (Sync::InStep, _, _) => (self, None),
+            (Sync::Dropping | Sync::InStep, _, _) => (self, None),
         }
     }
 

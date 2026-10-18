@@ -124,13 +124,14 @@ impl Foreign {
                     out,
                 )
             }
-            Phase::Ended => match self.glide(e, Sink::Pad, cfg, now) {
-                Some(coast) => (Self { coast, ..self }, vec![]),
-                None => {
+            Phase::Ended => {
+                if let Some(coast) = self.glide(e, Sink::Pad, cfg, now) {
+                    (Self { coast, ..self }, vec![])
+                } else {
                     let (pad, out) = pads(self.pad.end(now, tp));
                     (Self { pad, ..self }, out)
                 }
-            },
+            }
             Phase::Cancelled => {
                 let (pad, out) = pads(self.pad.end(now, tp));
                 (

@@ -50,9 +50,8 @@ fn decode_double(bytes: &[u8]) -> Result<Vec<Report>, DecodeError> {
             .ok_or(DecodeError::Double { len, first_len: 0 })?,
     );
     let split = 2 + first_len;
-    let (first, second) = match (bytes.get(2..split), bytes.get(split..)) {
-        (Some(a), Some(b)) => (a, b),
-        _ => return Err(DecodeError::Double { len, first_len }),
+    let (Some(first), Some(second)) = (bytes.get(2..split), bytes.get(split..)) else {
+        return Err(DecodeError::Double { len, first_len });
     };
     Ok(vec![decode_single(first)?, decode_single(second)?])
 }

@@ -139,9 +139,9 @@ impl Reader {
     /// The settings in force: the machine's file with the person's laid over it.
     fn with_layers(mut self, now: Mono) -> Self {
         let (config, warnings) = config::layered(&self.system, self.user.as_deref());
-        warnings
-            .iter()
-            .for_each(|w| eprintln!("palmrest: config: {w}"));
+        for w in &warnings {
+            eprintln!("palmrest: config: {w}");
+        }
         self.devices = self.devices.reconfigure(&config, now);
         self.tracker = self.tracker.with_config(config);
         self

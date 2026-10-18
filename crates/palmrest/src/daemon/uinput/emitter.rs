@@ -120,7 +120,7 @@ impl<S: Session> Emitter for UinputEmitter<S> {
 
 /// Every key the combos press, once each and in code order.
 fn key_codes(combos: &[KeyCombo]) -> Vec<u16> {
-    let mut codes: Vec<u16> = combos.iter().flat_map(|k| k.codes()).collect();
+    let mut codes: Vec<u16> = combos.iter().flat_map(KeyCombo::codes).collect();
     codes.sort_unstable();
     codes.dedup();
     codes

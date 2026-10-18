@@ -60,27 +60,24 @@ pub fn find(sys: &Path) -> Option<Found> {
         .filter_map(|e| e.ok().map(|e| e.path()))
         .collect();
     entries.sort();
-    let found: Vec<Found> = entries
-        .into_iter()
-        .filter_map(|dir| {
-            let id = parse_uevent(&std::fs::read_to_string(dir.join("device/uevent")).ok()?)?;
-            let node = Path::new("/dev").join(dir.file_name()?);
-            let device = *known_device(&id)?;
-            let info = DeviceInfo {
-                name: id.name.clone(),
-                path: node.display().to_string(),
-                vendor: id.vendor as u16,
-                product: id.product as u16,
-            };
-            Some(Found { node, info, device })
-        })
-        .collect();
+    let found = entries.into_iter().filter_map(|dir| {
+        let id = parse_uevent(&std::fs::read_to_string(dir.join("device/uevent")).ok()?)?;
+        let node = Path::new("/dev").join(dir.file_name()?);
+        let device = *known_device(&id)?;
+        let info = DeviceInfo {
+            name: id.name.clone(),
+            path: node.display().to_string(),
+            vendor: id.vendor as u16,
+            product: id.product as u16,
+        };
+        Some(Found { node, info, device })
+    });
     let rank = |f: &Found| {
         crate::sensor::magic_mouse::KNOWN
             .iter()
             .position(|k| *k == f.device)
     };
-    found.into_iter().min_by_key(rank)
+    found.min_by_key(rank)
 }
 
 /// Exponential backoff: 1 s, doubling, capped.

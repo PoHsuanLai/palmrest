@@ -65,7 +65,7 @@ pub(super) fn advance(k: Track, t: &Touch, now: Mono, cfg: &Config) -> Track {
     let k = Track { at: t.at, ..k };
     let class = match (cfg.rejection, k.class) {
         (Rejection::Off, _) => Contact::Firm,
-        (_, Contact::Palm) | (_, Contact::Resting) => k.class,
+        (_, Contact::Palm | Contact::Resting) => k.class,
         _ if is_palm(t, cfg) => Contact::Palm,
         (_, Contact::Watched) => watched(k, t, now, cfg),
         _ => by_size(t, cfg),
