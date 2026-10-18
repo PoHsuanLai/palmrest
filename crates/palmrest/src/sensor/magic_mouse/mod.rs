@@ -13,7 +13,7 @@ pub mod report;
 pub use known::{Bus, KNOWN, KnownDevice, Layout, Model, Support, known};
 
 use super::SensorError;
-use super::frame::{Frame, FrameContact, FrameStamp, MagicShape, Shape};
+use super::frame::{Frame, FrameContact, MagicShape, Shape};
 use super::surface::{ButtonZones, DeviceClock, Extent, Surface};
 use super::units::{MmRange, Resolution, UnitsPerMm};
 use crate::touch::RawTouch;
