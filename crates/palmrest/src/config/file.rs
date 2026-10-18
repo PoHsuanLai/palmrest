@@ -10,7 +10,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 /// Every setting the daemon reads.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize)]
 pub struct Config {
     pub rejection: Rejection,
     pub foreign_output: ForeignOutput,
@@ -24,25 +24,6 @@ pub struct Config {
     pub palm_rejection: PalmRejectionSettings,
     pub touchpad: TouchpadSettings,
     pub device: DeviceSettings,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            rejection: Rejection::On,
-            foreign_output: ForeignOutput::Touchpad,
-            foreign_momentum: ForeignMomentum::Toolkit,
-            scroll: ScrollSettings::default(),
-            feel: FeelSettings::default(),
-            momentum: MomentumSettings::default(),
-            swipe: SwipeSettings::default(),
-            tap: TapSettings::default(),
-            gestures: GestureSettings::default(),
-            palm_rejection: PalmRejectionSettings::default(),
-            touchpad: TouchpadSettings::default(),
-            device: DeviceSettings::default(),
-        }
-    }
 }
 
 /// The file is not TOML at all; nothing in it can be trusted.
