@@ -3,7 +3,7 @@
 
 use super::limits::PACKETS_PER_PASS;
 use super::seat::{Peer, peer_of};
-use super::shell::Origin;
+use latchkey::guard::Origin;
 use palmrest_protocol::{
     self as protocol, Filter, LockState, Over, ToDaemon, ToHost, USER_CONFIG_MAX_BYTES,
 };

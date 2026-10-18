@@ -100,7 +100,7 @@ decision vs lock parameters, contact tracking vs palm turn, one file per scenari
 | Replaying recordings, curve comparison | `replay`, `replay::compare` |
 | Threads, sockets, discovery, backoff, nodes | `daemon` |
 | Subscribers of the socket: ids, caps, budgets, the joint claim and lock | `daemon::socket::{server, client, limits}` |
-| Who has the seat, and what a connection is to the daemon (shell, other program, stranger) | `daemon::socket::seat` (`SeatFile`, `peer_of`), `daemon::socket::shell` (`Steering`, `ShellCheck`) |
+| Who has the seat, and what a connection is to the daemon (shell, other program, stranger) | `daemon::socket::seat` (`peer_of`), `daemon::socket::shell` (`Steering`, palmrest's shell table); the shell check, the seat file and the accept failures are `latchkey::guard`, shared with keycap |
 | Actions that need the person's session (asked of the shell, never run here) | `action::Effect::Host`, `palmrest_protocol::HostAction`, `ToHost::Run` |
 | The person's settings laid over the machine's | `config::layer`, `ToDaemon::UserConfig` |
 | What the shell says about the lock screen | `palmrest_protocol::ToDaemon::SessionLock`, `Tracker::with_session_lock` |

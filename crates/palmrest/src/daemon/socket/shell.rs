@@ -7,12 +7,12 @@
 //!
 //! palmrest is a dynamic user without privileges, so it cannot read another user's image path;
 //! the unit name in the control group is all there is to go on, and the process is held by its
-//! pidfd so the name cannot belong to a process that has since been replaced.
+//! pidfd so the name cannot belong to a process that has since been replaced. The check itself is
+//! `latchkey::guard`; this file is palmrest's table and its choice of who is believed.
 
-use peephole::{Alive, Pinned, Prober, ProcFs, RealProc};
+use latchkey::guard::{SeatUser, ShellCheck, Vouch};
+use peephole_core::Table;
 use peephole_core::roles::SHELL;
-use peephole_core::{CgroupPath, PinNeed, Standing, Table, judge};
-use rustix::fd::OwnedFd;
 
 /// The one program allowed to speak for the session, as a row of a caller table. The paths only
 /// matter when the image can be read at all, which a dynamic user cannot do for another user's
@@ -29,55 +29,6 @@ exe  = [
 ]
 role = "shell"
 "#;
-
-/// How firmly a connection's process must have been held. Peephole's socket pin is made after
-/// the connect (`Reopened`), so nothing firmer can be asked yet.
-const PIN_NEED: PinNeed = PinNeed::Any;
-
-/// A process we hold, running as the shell, under the manager of `user`.
-#[derive(Debug)]
-pub(super) struct Held {
-    pub(super) process: Pinned,
-    pub(super) user: u32,
-}
-
-/// What a connection showed itself to be when it connected.
-#[derive(Debug)]
-pub(super) enum Origin {
-    /// In the shell's unit, under this user's manager.
-    Shell(Held),
-    /// Anything else.
-    Other,
-}
-
-/// What a connection claims right now.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Claim {
-    /// The shell of this user, and its process is still the one we held.
-    Shell {
-        user: u32,
-    },
-    Other,
-}
-
-impl Origin {
-    /// The claim as of now: a shell whose process has since exited (and whose socket a child
-    /// kept open) claims nothing.
-    pub(super) fn claim(&self) -> Claim {
-        match self {
-            Origin::Shell(held) if held.process.alive() == Alive::Yes => {
-                Claim::Shell { user: held.user }
-            }
-            Origin::Shell(_) | Origin::Other => Claim::Other,
-        }
-    }
-}
-
-/// Decides what a freshly connected stream is.
-pub(super) trait Vouch: Send + 'static {
-    /// The origin of the process on the other end of `stream`.
-    fn origin(&self, stream: &OwnedFd) -> Origin;
-}
 
 /// Who is believed about the lock screen, chosen by the unit's environment.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -101,89 +52,27 @@ impl Steering {
 
     pub(super) fn vouch(self) -> Box<dyn Vouch> {
         match self {
-            Steering::ShellUnit => Box::new(ShellCheck::system()),
+            Steering::ShellUnit => Box::new(shell_check()),
             Steering::SeatUser => Box::new(SeatUser),
         }
     }
 }
 
-/// The real check: hold the process, read its control group, judge it against the shell's row.
-#[derive(Debug)]
-pub(super) struct ShellCheck<P: ProcFs = RealProc> {
-    prober: Prober<P>,
-    table: Table,
-}
-
-impl ShellCheck {
-    /// The check of this machine. A table that does not parse leaves nobody believed, which is
-    /// the safe way to fail.
-    pub(super) fn system() -> Self {
-        let table = Table::from_toml(SHELL_TABLE).unwrap_or_else(|e| {
-            eprintln!(
-                "palmrest: nobody is believed about the lock: the shell table is unusable: {e}"
-            );
-            Table::empty()
-        });
-        Self::new(Prober::new(RealProc::system()), table)
-    }
-}
-
-impl<P: ProcFs> ShellCheck<P> {
-    pub(super) fn new(prober: Prober<P>, table: Table) -> Self {
-        Self { prober, table }
-    }
-
-    /// What the held process `process` is.
-    pub(super) fn origin_of(&self, process: Pinned) -> Origin {
-        let Ok(facts) = self.prober.probe(&process, None) else {
-            return Origin::Other;
-        };
-        let user = match judge(&facts, &self.table) {
-            Standing::Service { role, pin, .. } if role == SHELL && PIN_NEED.satisfied_by(pin) => {
-                manager_user(&facts.cgroup)
-            }
-            _ => None,
-        };
-        user.map_or(Origin::Other, |user| Origin::Shell(Held { process, user }))
-    }
-}
-
-impl<P: ProcFs + 'static> Vouch for ShellCheck<P> {
-    fn origin(&self, stream: &OwnedFd) -> Origin {
-        Pinned::of_stream(stream).map_or(Origin::Other, |process| self.origin_of(process))
-    }
-}
-
-/// Every connection is the shell of the user it runs as.
-#[derive(Debug)]
-struct SeatUser;
-
-impl Vouch for SeatUser {
-    fn origin(&self, stream: &OwnedFd) -> Origin {
-        Pinned::of_stream(stream).map_or(Origin::Other, |process| {
-            let user = process.uid().get();
-            Origin::Shell(Held { process, user })
-        })
-    }
-}
-
-/// The user whose manager runs the unit at `cgroup`: the path starts
-/// `/user.slice/user-<N>.slice/user@<N>.service/`, and `N` is the same twice.
-fn manager_user(cgroup: &CgroupPath) -> Option<u32> {
-    let mut segments = cgroup.segments();
-    let (slice, user_slice, manager) = (segments.next()?, segments.next()?, segments.next()?);
-    let from_slice = user_slice.strip_prefix("user-")?.strip_suffix(".slice")?;
-    let from_manager = manager.strip_prefix("user@")?.strip_suffix(".service")?;
-    match slice == "user.slice" && from_slice == from_manager {
-        true => from_manager.parse().ok(),
-        false => None,
-    }
+/// The check of this machine against the shell table. A table that does not parse leaves nobody
+/// believed, which is the safe way to fail.
+fn shell_check() -> ShellCheck {
+    let table = Table::from_toml(SHELL_TABLE).unwrap_or_else(|e| {
+        eprintln!("palmrest: nobody is believed about the lock: the shell table is unusable: {e}");
+        Table::empty()
+    });
+    ShellCheck::system(table, vec![SHELL])
 }
 
 #[cfg(test)]
-pub(super) mod tests {
+mod tests {
     use super::*;
-    use peephole::{FixtureImage, FixtureProc, FixtureProcess};
+    use latchkey::guard::Claim;
+    use peephole::{FixtureImage, FixtureProc, FixtureProcess, Pinned, Prober};
     use peephole_core::{FileTrust, Pid, Pin, Uid, Writer};
 
     const PID: u32 = 4242;
@@ -196,7 +85,11 @@ pub(super) mod tests {
             image,
             flatpak_info: None,
         });
-        ShellCheck::new(Prober::new(proc), Table::from_toml(SHELL_TABLE).unwrap())
+        ShellCheck::new(
+            Prober::new(proc),
+            Table::from_toml(SHELL_TABLE).unwrap(),
+            vec![SHELL],
+        )
     }
 
     fn held(uid: u32) -> Pinned {
@@ -205,14 +98,6 @@ pub(super) mod tests {
 
     fn claim_of(cgroup: &str, image: FixtureImage<'_>) -> Claim {
         check(cgroup, image).origin_of(held(1000)).claim()
-    }
-
-    /// A held shell of `user`, for the socket tests that need a connection believed about the lock.
-    pub(in crate::daemon::socket) fn shell_of(user: u32) -> Origin {
-        Origin::Shell(Held {
-            process: held(user),
-            user,
-        })
     }
 
     #[test]
@@ -232,17 +117,6 @@ pub(super) mod tests {
             (
                 "a scope",
                 format!("{MANAGER_1000}/app.slice/app-sill-1.scope"),
-                Claim::Other,
-            ),
-            (
-                "a system service of that name",
-                "/system.slice/sill.service".to_owned(),
-                Claim::Other,
-            ),
-            (
-                "a manager of another user than the slice",
-                "/user.slice/user-999.slice/user@1000.service/session.slice/sill.service"
-                    .to_owned(),
                 Claim::Other,
             ),
         ];
@@ -275,17 +149,6 @@ pub(super) mod tests {
         for (name, image, want) in cases {
             assert_eq!(claim_of(&cgroup, *image), *want, "{name}");
         }
-    }
-
-    #[test]
-    fn a_shell_whose_process_has_exited_claims_nothing() {
-        let gone = Pinned::introduced_gone(Pid::new(PID).unwrap(), Uid::new(1000), Pin::Reopened);
-        let left = Origin::Shell(Held {
-            process: gone,
-            user: 1000,
-        });
-        assert_eq!(left.claim(), Claim::Other);
-        assert_eq!(shell_of(1000).claim(), Claim::Shell { user: 1000 });
     }
 
     #[test]

@@ -19,12 +19,12 @@ mod seat;
 mod server;
 mod shell;
 
+pub use latchkey::guard::{SEAT_FILE, SeatFile};
 use limits::QUEUE_MAX;
 use palmrest_protocol::{DeviceInfo, HostAction, LockState, Over, ToHost};
 use rustix::event::{EventfdFlags, eventfd};
 use rustix::fd::OwnedFd;
 use rustix::net::{AddressFamily, SocketAddrUnix, SocketFlags, SocketType};
-pub use seat::{SEAT_FILE, SeatFile};
 use server::{Exit, Server};
 pub use shell::Steering;
 use std::io;

@@ -3,13 +3,10 @@
 //! is bounded, so no subscriber can keep the others, or the reader's stream, waiting.
 
 use super::client::{Client, ClientId, Link};
-use super::limits::{
-    ACCEPTS_PER_PASS, AcceptFailure, Complaints, Intake, MAX_CLIENTS, SEAT_RECHECK, Voice,
-    accept_failure,
-};
-use super::seat::{Peer, SeatFile, peer_of};
-use super::shell::Vouch;
+use super::limits::{ACCEPTS_PER_PASS, Complaints, Intake, MAX_CLIENTS, SEAT_RECHECK};
+use super::seat::{Peer, peer_of};
 use super::{FromSocket, ToSocket, aggregate, aggregate_lock};
+use latchkey::guard::{AcceptFailure, SeatFile, Voice, Vouch, accept_failure};
 use palmrest_protocol::{DeviceInfo, HostAction, LockState, Over, PROTOCOL_VERSION, ToHost};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::fd::OwnedFd;

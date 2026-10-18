@@ -2,7 +2,7 @@
 //! Every bound is against a subscriber that is broken or hostile: it is refused or cut, and
 //! never allowed to wedge the thread that serves shell-host.
 
-use rustix::io::Errno;
+use latchkey::guard::{ACCEPT_PAUSE, COMPLAINT_INTERVAL, Voice};
 use std::time::{Duration, Instant};
 
 /// Subscribers connected at once. shell-host is the only one in practice; a few more cover a
@@ -16,34 +16,9 @@ pub(super) const ACCEPTS_PER_PASS: usize = 8;
 /// Messages the reader may have queued for the socket thread. At 90 reports a second this is
 /// more than ten seconds of a stuck thread; past it the reader drops messages rather than wait.
 pub(super) const QUEUE_MAX: usize = 1024;
-/// How long the listener is left alone after `accept` failed for a reason that retrying at once
-/// will not clear (out of file descriptors).
-pub(super) const ACCEPT_PAUSE: Duration = Duration::from_secs(1);
 /// How often the seat file is read when no subscriber says anything, so a user switch is noticed
 /// with no traffic.
 pub(super) const SEAT_RECHECK: Duration = Duration::from_secs(1);
-/// How often a refusal is written to the log.
-pub(super) const COMPLAINT_INTERVAL: Duration = Duration::from_secs(60);
-
-/// What a failed `accept` means.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum AcceptFailure {
-    /// No connection is waiting: the loop is done for this pass.
-    NothingPending,
-    /// Interrupted: ask again.
-    Retry,
-    /// The connection stays pending, so polling would return at once and spin: leave the
-    /// listener alone for a while.
-    Pause,
-}
-
-pub(super) fn accept_failure(e: Errno) -> AcceptFailure {
-    match e {
-        Errno::AGAIN => AcceptFailure::NothingPending,
-        Errno::INTR => AcceptFailure::Retry,
-        _ => AcceptFailure::Pause,
-    }
-}
 
 /// Whether the listener is polled.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,13 +50,6 @@ impl Intake {
             Intake::Open => None,
         }
     }
-}
-
-/// Whether a refusal is written to the log.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Voice {
-    Speak,
-    Silent,
 }
 
 /// The last time a refusal was logged, so a subscriber that keeps knocking cannot fill the log.
@@ -126,12 +94,5 @@ mod tests {
         assert_eq!(again, Voice::Silent);
         let (_, later) = c.note(t0 + COMPLAINT_INTERVAL);
         assert_eq!(later, Voice::Speak);
-    }
-
-    #[test]
-    fn only_a_missing_connection_ends_the_pass_quietly() {
-        assert_eq!(accept_failure(Errno::AGAIN), AcceptFailure::NothingPending);
-        assert_eq!(accept_failure(Errno::INTR), AcceptFailure::Retry);
-        assert_eq!(accept_failure(Errno::MFILE), AcceptFailure::Pause);
     }
 }

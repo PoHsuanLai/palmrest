@@ -4,13 +4,15 @@
 
 use super::limits::{MAX_CLIENTS, PACKETS_PER_PASS, QUEUE_MAX};
 use super::server::{Flow, Server};
-use super::shell::tests::shell_of;
-use super::shell::{Origin, Steering, Vouch};
+use super::shell::Steering;
 use super::{FromSocket, SeatFile, SocketHandle, ToSocket, aggregate, aggregate_lock, bind, spawn};
+use latchkey::guard::{Held, Origin, Vouch};
 use palmrest_protocol::{
     self as protocol, ActiveTouch, DeviceInfo, Filter, HostAction, LockState, Over,
     PROTOCOL_VERSION, TapKind, ToDaemon, ToHost, Topic,
 };
+use peephole::Pinned;
+use peephole_core::{Pid, Pin, Uid};
 use rustix::event::{EventfdFlags, eventfd};
 use rustix::fd::OwnedFd;
 use rustix::net::{
@@ -36,6 +38,12 @@ fn seat_file(dir: &Path, active: Option<u32>) -> SeatFile {
         None => std::fs::write(&path, "IS_SEAT0=1\n").unwrap(),
     }
     SeatFile(path)
+}
+
+/// A held shell of `user`, for the tests that need a connection believed about the lock.
+fn shell_of(user: u32) -> Origin {
+    let process = Pinned::introduced(Pid::new(4242).unwrap(), Uid::new(user), Pin::Reopened);
+    Origin::Shell(Held { process, user })
 }
 
 /// What a test connection is to the daemon.

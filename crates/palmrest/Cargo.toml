@@ -21,6 +21,7 @@ rustix.workspace = true
 input-linux.workspace = true
 turnstile-client.workspace = true
 peephole.workspace = true
+latchkey.workspace = true
 peephole-core.workspace = true
 
 [dev-dependencies]
