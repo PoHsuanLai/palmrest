@@ -10,7 +10,7 @@ use crate::outputs::events::{
     PAD_SLOTS, REL_HWHEEL, REL_HWHEEL_HI_RES, REL_WHEEL, REL_WHEEL_HI_RES,
 };
 use crate::outputs::pad::{PAD_X_MAX, PAD_Y_MAX, UNITS_PER_MM};
-use turnstile_client::{Create, Detail, Kind};
+use turnstile_client::Create;
 
 /// `INPUT_PROP_POINTER`: a touchpad, not a touchscreen.
 pub(super) const INPUT_PROP_POINTER: u16 = 0x00;
@@ -109,17 +109,17 @@ pub(super) fn wheel_caps() -> Caps {
 
 /// The identity and capabilities `request` asks for; none for a device that is not palmrest's.
 pub(super) fn wanted(request: &Create) -> Option<(Identity, Caps)> {
-    match (request.kind, &request.detail) {
-        (Kind::PalmrestTouchpad, _) => Some((TOUCHPAD, touchpad_caps())),
-        (Kind::PalmrestWheel, _) => Some((WHEEL, wheel_caps())),
-        (Kind::PalmrestKeys, Detail::Keys(codes)) => Some((
+    match request {
+        Create::Touchpad => Some((TOUCHPAD, touchpad_caps())),
+        Create::Wheel => Some((WHEEL, wheel_caps())),
+        Create::Keys(codes) => Some((
             KEYS,
             Caps {
                 keys: codes.clone(),
                 ..Caps::default()
             },
         )),
-        _ => None,
+        Create::Keyboard | Create::Pointer(_) => None,
     }
 }
 
