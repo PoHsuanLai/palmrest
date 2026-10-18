@@ -38,10 +38,10 @@ pub enum RecordedSource {
 
 impl RecordedSource {
     /// A fresh sensor to replay the reads through.
-    pub fn sensor(&self) -> Box<dyn Sensor> {
+    pub fn sensor(&self) -> Sensor {
         match self {
-            RecordedSource::MagicMouseHid => Box::new(MagicMouseHid::default()),
-            RecordedSource::Evdev(spec) => Box::new(EvdevMultitouch::new(*spec)),
+            RecordedSource::MagicMouseHid => Sensor::MagicMouse(MagicMouseHid::default()),
+            RecordedSource::Evdev(spec) => Sensor::Evdev(EvdevMultitouch::new(*spec)),
         }
     }
 }

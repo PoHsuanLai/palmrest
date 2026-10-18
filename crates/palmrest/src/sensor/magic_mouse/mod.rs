@@ -12,10 +12,10 @@ pub mod report;
 
 pub use known::{Bus, KNOWN, KnownDevice, Layout, Model, Support, known};
 
+use super::SensorError;
 use super::frame::{Frame, FrameContact, FrameStamp, MagicShape, Shape};
 use super::surface::{ButtonZones, DeviceClock, Extent, Surface};
 use super::units::{MmRange, Resolution, UnitsPerMm};
-use super::{Sensor, SensorError};
 use crate::touch::RawTouch;
 use report::Report;
 
@@ -69,14 +69,15 @@ impl Default for MagicMouseHid {
     }
 }
 
-impl Sensor for MagicMouseHid {
+impl MagicMouseHid {
     // TODO(untested): every model gets the Magic Mouse 2's surface. The USB-C model is assumed
     // to share it; the Magic Mouse 1's ranges and resolution were never read from a device.
-    fn surface(&self) -> Surface {
+    pub fn surface(&self) -> Surface {
         surface()
     }
 
-    fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, SensorError> {
+    /// One read's bytes to the frames it completes: one or two whole reports.
+    pub fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, SensorError> {
         Ok(decode::decode(bytes)?.iter().map(lift).collect())
     }
 }

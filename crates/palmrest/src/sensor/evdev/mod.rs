@@ -24,9 +24,9 @@ mod tests;
 pub use event::{EVENT_LEN, TimedEvent, parse};
 pub use spec::{AbsAxis, EvdevSpec};
 
+use super::SensorError;
 use super::frame::Frame;
 use super::surface::Surface;
-use super::{Sensor, SensorError};
 use slots::Slots;
 use thiserror::Error;
 
@@ -59,12 +59,14 @@ impl EvdevMultitouch {
     }
 }
 
-impl Sensor for EvdevMultitouch {
-    fn surface(&self) -> Surface {
+impl EvdevMultitouch {
+    pub fn surface(&self) -> Surface {
         self.spec.surface()
     }
 
-    fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, SensorError> {
+    /// One read's bytes to the frames it completes. Frames end at `SYN_REPORT` and may span
+    /// reads, so the slot state is carried between calls.
+    pub fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, SensorError> {
         let events = parse(bytes)?;
         let resolution = self.spec.resolution();
         let (slots, frames) = events.iter().fold(

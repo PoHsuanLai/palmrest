@@ -7,8 +7,8 @@ use super::hidraw::{self, Access, READ_LEN};
 use crate::config::DeviceSource;
 use crate::error::Error;
 use crate::recording::RecordedSource;
+use crate::sensor::evdev::EVENT_LEN;
 use crate::sensor::magic_mouse::{Layout, Support};
-use crate::sensor::{EvdevMultitouch, EvdevSpec, MagicMouseHid, Sensor, evdev::EVENT_LEN};
 use palmrest_protocol::DeviceInfo;
 use rustix::fd::OwnedFd;
 use std::path::Path;
@@ -25,36 +25,20 @@ pub enum Purpose {
     Record,
 }
 
-/// Which sensor an opened node needs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Kind {
-    Hid(MagicMouseHid),
-    Evdev(EvdevSpec),
-}
-
 /// An opened node.
 pub struct Opened {
     pub fd: OwnedFd,
-    pub kind: Kind,
+    /// Which sensor the node needs, and what a recording of it says it came from.
+    pub source: RecordedSource,
     pub info: DeviceInfo,
-    /// How many bytes one read may take.
-    pub read_len: usize,
 }
 
 impl Opened {
-    /// A fresh sensor for this node.
-    pub fn sensor(&self) -> Box<dyn Sensor> {
-        match self.kind {
-            Kind::Hid(s) => Box::new(s),
-            Kind::Evdev(spec) => Box::new(EvdevMultitouch::new(spec)),
-        }
-    }
-
-    /// What a recording of this node says it came from.
-    pub fn recorded(&self) -> RecordedSource {
-        match self.kind {
-            Kind::Hid(_) => RecordedSource::MagicMouseHid,
-            Kind::Evdev(spec) => RecordedSource::Evdev(spec),
+    /// How many bytes one read may take.
+    pub fn read_len(&self) -> usize {
+        match self.source {
+            RecordedSource::MagicMouseHid => READ_LEN,
+            RecordedSource::Evdev(_) => EVENT_LEN * EVDEV_READ_EVENTS,
         }
     }
 }
@@ -105,9 +89,8 @@ fn open_hidraw(purpose: Purpose) -> Result<Opened, Error> {
     }
     Ok(Opened {
         fd,
-        kind: Kind::Hid(MagicMouseHid::new(d.model)),
+        source: RecordedSource::MagicMouseHid,
         info: found.info,
-        read_len: READ_LEN,
     })
 }
 
@@ -124,8 +107,7 @@ fn open_evdev() -> Result<Opened, Error> {
     );
     Ok(Opened {
         fd,
-        kind: Kind::Evdev(spec),
+        source: RecordedSource::Evdev(spec),
         info,
-        read_len: EVENT_LEN * EVDEV_READ_EVENTS,
     })
 }

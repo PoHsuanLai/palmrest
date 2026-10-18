@@ -45,7 +45,7 @@ pub fn record(out: &Path, source: DeviceSource, limits: Limits) -> Result<usize,
         path: out.to_path_buf(),
         source,
     })?;
-    file.write_all(&header(&opened.recorded()))?;
+    file.write_all(&header(&opened.source))?;
     eprintln!(
         "palmrest: recording {} ({}) to {}",
         info.name,
@@ -60,7 +60,7 @@ pub fn record(out: &Path, source: DeviceSource, limits: Limits) -> Result<usize,
         if now.since(last) >= limits.idle || now.since(start) >= limits.total {
             break;
         }
-        match hidraw::read_up_to(&opened.fd, Duration::from_millis(100), opened.read_len) {
+        match hidraw::read_up_to(&opened.fd, Duration::from_millis(100), opened.read_len()) {
             Read::Report(bytes) => {
                 last = hidraw::now();
                 file.write_all(&encode_record(&Record { at: last, bytes }))?;

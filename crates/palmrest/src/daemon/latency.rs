@@ -40,7 +40,7 @@ pub fn measure(source: &RecordedSource, records: &[Record], cfg: Config) -> Late
     );
     for r in records {
         let start = Instant::now();
-        let (t, c, step) = feed_from(sensor.as_mut(), tracker, clock, r, Timing::Calibrated);
+        let (t, c, step) = feed_from(&mut sensor, tracker, clock, r, Timing::Calibrated);
         tracker = t;
         clock = c;
         let mut bytes = 0usize;

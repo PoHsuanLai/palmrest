@@ -115,17 +115,16 @@ decision vs lock parameters, contact tracking vs palm turn, one file per scenari
 
 | Trait | Signature | Implementors |
 |---|---|---|
-| `Sensor` (`sensor`) | `fn surface(&self) -> Surface; fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, SensorError>` | `MagicMouseHid`, `EvdevMultitouch` |
 | `Emitter` (`outputs`) | `fn pad(&mut self, f: &PadFrame) -> Result<(), OutputError>; fn wheel(&mut self, d: &WheelDelta) -> Result<(), OutputError>; fn key(&mut self, k: &KeyCombo) -> Result<(), OutputError>` | `daemon::uinput::UinputEmitter` (over any `turnstile_client::Session`), `RecordingEmitter` |
 | `Setting` (`config::lenient`) | `fn read(v: &toml::Value, key: &str, warn: &mut Vec<Warning>) -> Option<Self>` | every unit newtype, enum and `Action` (through `settings_struct!` and `serde_settings!`) |
 
-Add an implementor of `Sensor` for a new device family, of `Emitter` for a new kind of output
+Add an implementor of `Emitter` for a new kind of output
 device, of `Setting` for a new value type. Add a new trait only when two real implementations
 are swapped at a boundary. The next candidate is a second source of the daemon's clock and
 environment (`daemon::Env`); it is a plain struct until a fake exists.
 
 **Closed enums that stay enums:** `Out`, `Action`, `Gesture`, `ToHost`, `ToDaemon`, `Phase`,
-`Over`, `Kind` (the sensor kind the daemon opens), `RecordedSource`, `Curve`, `DeviceSource`,
+`Over`, `Sensor` (the two kinds of device), `RecordedSource` (which one a node or recording is), `Curve`, `DeviceSource`,
 `ForeignOutput`, `ForeignMomentum`, `G4Mode`.
 
 ## 5. Recipes
@@ -149,14 +148,14 @@ environment (`daemon::Env`); it is a plain struct until a fake exists.
 
 ### Add a sensor
 
-1. `sensor/<family>/mod.rs`: the type, implementing `Sensor`; `decode` returns millimetre
+1. `sensor/<family>/mod.rs`: the type, with `surface` and `decode`; `decode` returns millimetre
    `Frame`s on the reference lattice and a `SensorError` for a malformed read; its `Surface`
    states size, resolution, buttons and clock.
-2. `sensor/mod.rs`: declare and export it; add its variant to `SensorError`.
+2. `sensor/mod.rs`: declare and export it; add its variant to `Sensor` and `SensorError`.
 3. `config/enums.rs`: a `DeviceSource` variant (the `[device] source` key).
-4. `daemon/source.rs`: a `Kind` variant and its arm in `Opened::sensor` and `Opened::recorded`;
+4. `daemon/source.rs`: a `RecordedSource` variant and its arm in `Opened::read_len`;
    `daemon/<family>.rs` for opening and identifying the node (node facts parsed, never
-   searched); `recording.rs`: a `RecordedSource` variant so recordings replay.
+   searched); `recording.rs`: its arm in `RecordedSource::sensor` and `header` so recordings replay.
 5. Tests: decode tables from bytes captured with `palmrest record`; a parity test in
    `tests/` replaying an existing fixture re-expressed through the new sensor to the same
    outputs.

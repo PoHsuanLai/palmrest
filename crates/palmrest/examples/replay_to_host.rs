@@ -96,7 +96,7 @@ fn to_host(source: &RecordedSource, records: &[Record], held: Over) -> Vec<ToHos
     for r in records {
         let (t, ticked) = ticks_until(tracker, Some(r.at));
         outs.extend(ticked);
-        let (t, c, step) = feed_from(sensor.as_mut(), t, clock, r, Timing::Arrival);
+        let (t, c, step) = feed_from(&mut sensor, t, clock, r, Timing::Arrival);
         (tracker, clock) = (t, c);
         outs.extend(step.outs);
     }

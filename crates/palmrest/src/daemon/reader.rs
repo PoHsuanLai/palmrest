@@ -63,7 +63,7 @@ impl Reader {
         let info = opened.info.clone();
         eprintln!("palmrest: connected: {} ({})", info.name, info.path);
         self.socket.send(ToSocket::Device(info));
-        let mut sensor = opened.sensor();
+        let mut sensor = opened.source.sensor();
         self.tracker = self.tracker.with_surface(sensor.surface());
         let mut clock = StampClock::new();
         let mut errors = 0;
@@ -74,7 +74,7 @@ impl Reader {
                 .tracker
                 .deadline()
                 .map_or(IDLE_POLL, |d| d.since(now).min(IDLE_POLL));
-            match hidraw::read_up_to(&opened.fd, timeout, opened.read_len) {
+            match hidraw::read_up_to(&opened.fd, timeout, opened.read_len()) {
                 Read::Report(bytes) => {
                     errors = 0;
                     let record = Record {
@@ -82,7 +82,7 @@ impl Reader {
                         bytes,
                     };
                     let (t, c, step) = feed_from(
-                        sensor.as_mut(),
+                        &mut sensor,
                         self.tracker,
                         clock,
                         &record,

@@ -298,7 +298,7 @@ wheel frames, fractions carried. Any MayBegin during a glide stops it; a Cancell
 Unproven: the touch-to-stop lift happens at glide speed, and toolkits may start a short fling
 of their own from it. The 11.3.6 boost is not synthesized.
 
-**The `Sensor` trait and the evdev sensor.** `fn surface(&self) -> Surface` (extent in mm,
+**The `Sensor` enum and the evdev sensor.** `fn surface(&self) -> Surface` (extent in mm,
 resolution per axis, `ButtonZones`, `DeviceClock::{Ticks18, Kernel, ArrivalOnly}`) and
 `fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, SensorError>`: `&mut self` and a
 `Vec` because an evdev read is a run of events whose frames end at `SYN_REPORT` and can span

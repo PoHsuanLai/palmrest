@@ -61,7 +61,7 @@ pub fn replay_from(
     for r in records {
         let (t, ticks) = ticks_until(tracker, Some(r.at));
         steps.extend(ticks);
-        let (t, clk, step) = feed_from(sensor.as_mut(), t, clock, r, timing);
+        let (t, clk, step) = feed_from(&mut sensor, t, clock, r, timing);
         tracker = t;
         clock = clk;
         steps.push(step);
@@ -106,12 +106,18 @@ pub fn feed(
     r: &Record,
     timing: Timing,
 ) -> (Tracker, StampClock, Step) {
-    feed_from(&mut MagicMouseHid::default(), tracker, clock, r, timing)
+    feed_from(
+        &mut Sensor::MagicMouse(MagicMouseHid::default()),
+        tracker,
+        clock,
+        r,
+        timing,
+    )
 }
 
 /// One read through the sensor, the stamp clock and the tracker: the reader thread's body.
-pub fn feed_from<S: Sensor + ?Sized>(
-    sensor: &mut S,
+pub fn feed_from(
+    sensor: &mut Sensor,
     tracker: Tracker,
     clock: StampClock,
     r: &Record,
