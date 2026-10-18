@@ -6,9 +6,10 @@
 //! device. The one hidraw ioctl no safe crate has is in `hidioc`.
 
 use input_linux::{
-    AbsoluteAxis, AbsoluteInfo, AbsoluteInfoSetup, EvdevHandle, EventKind, InputProperty, Key,
-    RelativeAxis, UInputHandle,
+    AbsoluteAxis, AbsoluteInfoSetup, EvdevHandle, EventKind, InputProperty, Key, RelativeAxis,
+    UInputHandle,
 };
+pub use input_linux::{AbsoluteInfo as AbsInfo, InputId};
 use rustix::fd::{AsFd, BorrowedFd};
 use std::io;
 
@@ -53,33 +54,13 @@ impl MtAxis {
 /// Reads one multitouch axis's range and resolution from an evdev fd (`EVIOCGABS`). Read-only:
 /// it changes nothing on the device.
 pub fn abs_info(fd: impl AsFd, axis: MtAxis) -> io::Result<AbsInfo> {
-    evdev(&fd).absolute_info(axis.typed()).map(AbsInfo::from)
+    evdev(&fd).absolute_info(axis.typed())
 }
 
 /// Stamps this fd's events on `CLOCK_MONOTONIC` instead of the wall clock (`EVIOCSCLOCKID`).
 /// Per open file: no other reader of the device is affected.
 pub fn monotonic_events(fd: impl AsFd) -> io::Result<()> {
     evdev(&fd).set_clock_id(CLOCK_MONOTONIC)
-}
-
-/// `struct input_id`.
-#[derive(Debug, Clone, Copy)]
-pub struct InputId {
-    pub bustype: u16,
-    pub vendor: u16,
-    pub product: u16,
-    pub version: u16,
-}
-
-impl From<InputId> for input_linux::InputId {
-    fn from(id: InputId) -> Self {
-        Self {
-            bustype: id.bustype,
-            vendor: id.vendor,
-            product: id.product,
-            version: id.version,
-        }
-    }
 }
 
 /// `struct uinput_setup`: the identity a virtual device is created under. The name is NUL
@@ -99,43 +80,6 @@ impl UinputSetup {
     }
 }
 
-/// `struct input_absinfo`.
-#[derive(Debug, Clone, Copy, Default)]
-pub struct AbsInfo {
-    pub value: i32,
-    pub minimum: i32,
-    pub maximum: i32,
-    pub fuzz: i32,
-    pub flat: i32,
-    pub resolution: i32,
-}
-
-impl From<AbsoluteInfo> for AbsInfo {
-    fn from(info: AbsoluteInfo) -> Self {
-        Self {
-            value: info.value,
-            minimum: info.minimum,
-            maximum: info.maximum,
-            fuzz: info.fuzz,
-            flat: info.flat,
-            resolution: info.resolution,
-        }
-    }
-}
-
-impl From<AbsInfo> for AbsoluteInfo {
-    fn from(info: AbsInfo) -> Self {
-        Self {
-            value: info.value,
-            minimum: info.minimum,
-            maximum: info.maximum,
-            fuzz: info.fuzz,
-            flat: info.flat,
-            resolution: info.resolution,
-        }
-    }
-}
-
 /// `struct uinput_abs_setup`: one absolute axis and its range.
 #[derive(Debug, Clone, Copy)]
 pub struct UinputAbsSetup {
@@ -147,7 +91,7 @@ impl UinputAbsSetup {
     fn typed(self) -> io::Result<AbsoluteInfoSetup> {
         Ok(AbsoluteInfoSetup {
             axis: AbsoluteAxis::from_code(self.code).map_err(out_of_range)?,
-            info: self.absinfo.into(),
+            info: self.absinfo,
         })
     }
 }
@@ -182,12 +126,7 @@ pub fn dev_create(fd: impl AsFd, setup: UinputSetup, abs: &[UinputAbsSetup]) -> 
         .iter()
         .map(|axis| axis.typed())
         .collect::<io::Result<Vec<_>>>()?;
-    uinput(&fd).create(
-        &setup.id.into(),
-        setup.name_bytes(),
-        setup.ff_effects_max,
-        &abs,
-    )
+    uinput(&fd).create(&setup.id, setup.name_bytes(), setup.ff_effects_max, &abs)
 }
 
 /// Destroys the device.
