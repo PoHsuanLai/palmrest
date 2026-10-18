@@ -87,7 +87,7 @@ fn wire_form_is_adjacently_tagged() {
 fn filters_admit_by_topic() {
     let only = Filter::Only(vec![Topic::Scroll]);
     let got: Vec<bool> = samples().iter().map(|m| only.admits(m)).collect();
-    assert_eq!(got, [true, true, false, false, false, true, true]);
+    assert_eq!(got, [true, true, false, false, false, true, true, true]);
     assert!(samples().iter().all(|m| Filter::All.admits(m)));
 }
 
