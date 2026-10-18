@@ -136,7 +136,7 @@ pub fn feed_from<S: Sensor + ?Sized>(
             for frame in &frames {
                 let (c, now) = match timing {
                     Timing::Arrival => (clock, r.at),
-                    Timing::Calibrated => clock.frame_time(frame.stamp, r.at),
+                    Timing::Calibrated => clock.observe(frame.stamp, r.at),
                 };
                 let (t, o) = tracker.step(frame, now);
                 tracker = t;

@@ -17,7 +17,7 @@ use super::surface::{ButtonZones, DeviceClock, Extent, Surface};
 use super::units::{MmRange, Resolution, UnitsPerMm};
 use super::{Sensor, SensorError};
 use crate::touch::RawTouch;
-use report::{Report, Stamp};
+use report::Report;
 
 /// The Magic Mouse 2's resolution (units/mm), as its kernel driver advertises it.
 pub const RESOLUTION: Resolution = Resolution {
@@ -87,10 +87,7 @@ pub fn lift(r: &Report) -> Frame {
         buttons: r.buttons,
         motion: r.motion,
         contacts: r.touches.iter().map(contact).collect(),
-        stamp: match r.stamp {
-            Stamp::Ticks(t) => FrameStamp::Ticks(t),
-            Stamp::Absent => FrameStamp::Absent,
-        },
+        stamp: r.stamp,
     }
 }
 

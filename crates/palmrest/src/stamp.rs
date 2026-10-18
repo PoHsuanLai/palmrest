@@ -6,7 +6,6 @@
 //! exists, the arrival time is the event time.
 
 use crate::sensor::FrameStamp;
-use crate::sensor::magic_mouse::report::Stamp;
 use crate::time::Mono;
 use std::time::Duration;
 
@@ -81,10 +80,14 @@ impl StampClock {
         self.rejected
     }
 
-    /// Takes one report's stamp and its arrival time; returns the event time.
-    pub fn observe(self, stamp: Stamp, arrival: Mono) -> (Self, Mono) {
-        let Stamp::Ticks(raw) = stamp else {
-            return self.emit(arrival);
+    /// Takes one frame's stamp and its arrival time; returns the event time. The Magic Mouse's
+    /// ticks go through the fit; a kernel stamp is already on the monotonic clock and stands in
+    /// for the arrival time; no stamp is the arrival time. Event time never runs backwards.
+    pub fn observe(self, stamp: FrameStamp, arrival: Mono) -> (Self, Mono) {
+        let raw = match stamp {
+            FrameStamp::Ticks(raw) => raw,
+            FrameStamp::Kernel(at) => return self.emit(at),
+            FrameStamp::Absent => return self.emit(arrival),
         };
         let ticks = self.unwrap(raw, arrival);
         let s = self.record(ticks, arrival).maybe_fit(arrival);
@@ -93,17 +96,6 @@ impl StampClock {
             Source::Arrival => arrival,
         };
         s.emit(t)
-    }
-
-    /// Takes one frame's stamp and its arrival time; returns the event time. The Magic Mouse's
-    /// ticks go through the fit; a kernel stamp is already on the monotonic clock and stands in
-    /// for the arrival time; no stamp is the arrival time. Event time never runs backwards.
-    pub fn frame_time(self, stamp: FrameStamp, arrival: Mono) -> (Self, Mono) {
-        match stamp {
-            FrameStamp::Ticks(t) => self.observe(Stamp::Ticks(t), arrival),
-            FrameStamp::Kernel(t) => self.observe(Stamp::Absent, t),
-            FrameStamp::Absent => self.observe(Stamp::Absent, arrival),
-        }
     }
 
     fn emit(mut self, t: Mono) -> (Self, Mono) {
@@ -240,7 +232,7 @@ mod tests {
         for i in 0..reports {
             let true_ns = 5_000_000_000 + i * PERIOD_NS;
             let ticks = ((true_ns / TICK_NS) % TICK_SPAN) as u32;
-            let (c, t) = clock.observe(Stamp::Ticks(ticks), Mono(true_ns + jitter(i)));
+            let (c, t) = clock.observe(FrameStamp::Ticks(ticks), Mono(true_ns + jitter(i)));
             clock = c;
             out.push(t);
         }
@@ -273,16 +265,16 @@ mod tests {
 
     #[test]
     fn absent_stamp_uses_arrival() {
-        let (_, t) = StampClock::new().observe(Stamp::Absent, Mono(42));
+        let (_, t) = StampClock::new().observe(FrameStamp::Absent, Mono(42));
         assert_eq!(t, Mono(42));
     }
 
     #[test]
     fn kernel_stamps_are_event_times_and_never_run_backwards() {
         let c = StampClock::new();
-        let (c, t) = c.frame_time(FrameStamp::Kernel(Mono(50)), Mono(90));
+        let (c, t) = c.observe(FrameStamp::Kernel(Mono(50)), Mono(90));
         assert_eq!(t, Mono(50));
-        let (_, t) = c.frame_time(FrameStamp::Kernel(Mono(40)), Mono(95));
+        let (_, t) = c.observe(FrameStamp::Kernel(Mono(40)), Mono(95));
         assert_eq!(t, Mono(50));
     }
 
