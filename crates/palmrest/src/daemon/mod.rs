@@ -17,6 +17,7 @@ pub(crate) mod sys;
 pub mod uinput;
 
 use crate::config::{self, Loaded};
+use crate::error::Error;
 use crate::outputs::Emitter;
 use crate::tracker::Tracker;
 use devices::{Devices, Factory};
@@ -26,7 +27,7 @@ use std::sync::mpsc;
 use uinput::{LiveRoute, Origin, UinputEmitter};
 
 /// Runs the daemon, making its virtual devices from `origin`: never returns unless setup fails.
-pub fn run(env: &Env, origin: Origin) -> Result<(), String> {
+pub fn run(env: &Env, origin: Origin) -> Result<(), Error> {
     let dir = env.config_dir.clone();
     let loaded: Loaded = config::load(dir.as_deref());
     loaded
@@ -38,16 +39,17 @@ pub fn run(env: &Env, origin: Origin) -> Result<(), String> {
     }
     let (config_tx, config_rx) = mpsc::channel();
     let _watcher = match dir {
-        Some(d) => {
-            Some(config::watch::spawn(d, config_tx).map_err(|e| format!("config watch: {e}"))?)
-        }
+        Some(d) => Some(config::watch::spawn(d, config_tx).map_err(Error::ConfigWatch)?),
         None => None,
     };
     let path = socket::default_path(&env.runtime_dir);
-    let listener = socket::bind(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let listener = socket::bind(&path).map_err(|source| Error::SocketBind {
+        path: path.clone(),
+        source,
+    })?;
     let (notes_tx, notes_rx) = mpsc::channel();
     let socket = socket::spawn(listener, notes_tx, env.seat_file.clone(), env.steering)
-        .map_err(|e| format!("socket thread: {e}"))?;
+        .map_err(Error::SocketThread)?;
     eprintln!("palmrest: listening on {}", path.display());
     let route = LiveRoute::live(origin);
     let factory: Factory = Box::new(move |foreign, combos| {

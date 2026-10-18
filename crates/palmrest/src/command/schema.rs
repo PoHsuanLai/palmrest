@@ -1,13 +1,16 @@
 //! `palmrest --write-schema DIR`: writes the schema of `gestures.toml` for the Settings app.
 
 use crate::config::{SCHEMA_FILE_NAME, Schema};
+use crate::error::Error;
 use std::path::Path;
 
 /// Writes `palmrest.settings.toml` into `dir`, creating it, by a temporary file and a rename
 /// (the way every settings file is written), and prints where it went.
-pub(super) fn write_schema(dir: &Path) -> Result<(), String> {
-    let target = write_to(dir)
-        .map_err(|e| format!("cannot write the schema into {}: {e}", dir.display()))?;
+pub(super) fn write_schema(dir: &Path) -> Result<(), Error> {
+    let target = write_to(dir).map_err(|source| Error::Schema {
+        dir: dir.to_path_buf(),
+        source,
+    })?;
     println!("{}", target.display());
     Ok(())
 }

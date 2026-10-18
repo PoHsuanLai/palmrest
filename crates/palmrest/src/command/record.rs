@@ -3,6 +3,7 @@
 use crate::config;
 use crate::daemon::Env;
 use crate::daemon::record::{self, Limits};
+use crate::error::Error;
 use std::path::Path;
 use std::time::Duration;
 
@@ -10,7 +11,7 @@ use std::time::Duration;
 const IDLE: Duration = Duration::from_secs(20);
 
 /// Records the configured `device.source` into `file` for at most `total`.
-pub(super) fn record(file: &Path, total: Duration, env: &Env) -> Result<(), String> {
+pub(super) fn record(file: &Path, total: Duration, env: &Env) -> Result<(), Error> {
     let limits = Limits { idle: IDLE, total };
     let source = config::load(env.config_dir.as_deref()).config.device.source;
     let n = record::record(file, source, limits)?;

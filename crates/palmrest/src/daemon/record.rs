@@ -7,6 +7,7 @@
 use super::hidraw::{self, Read};
 use super::source::{self, Purpose};
 use crate::config::DeviceSource;
+use crate::error::Error;
 use crate::recording::{Record, encode_record, header};
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -37,12 +38,14 @@ fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
 }
 
 /// Records until a limit is reached; returns the number of reads captured.
-pub fn record(out: &Path, source: DeviceSource, limits: Limits) -> Result<usize, String> {
+pub fn record(out: &Path, source: DeviceSource, limits: Limits) -> Result<usize, Error> {
     let opened = source::open(source, Purpose::Record)?;
     let info = &opened.info;
-    let mut file = create_private(out).map_err(|e| format!("{}: {e}", out.display()))?;
-    file.write_all(&header(&opened.recorded()))
-        .map_err(|e| e.to_string())?;
+    let mut file = create_private(out).map_err(|source| Error::File {
+        path: out.to_path_buf(),
+        source,
+    })?;
+    file.write_all(&header(&opened.recorded()))?;
     eprintln!(
         "palmrest: recording {} ({}) to {}",
         info.name,
@@ -60,15 +63,14 @@ pub fn record(out: &Path, source: DeviceSource, limits: Limits) -> Result<usize,
         match hidraw::read_up_to(&opened.fd, Duration::from_millis(100), opened.read_len) {
             Read::Report(bytes) => {
                 last = hidraw::now();
-                file.write_all(&encode_record(&Record { at: last, bytes }))
-                    .map_err(|e| e.to_string())?;
+                file.write_all(&encode_record(&Record { at: last, bytes }))?;
                 count += 1;
             }
             Read::Timeout => {}
-            Read::Failed(e) => return Err(e),
+            Read::Failed(e) => return Err(Error::Read(e)),
         }
     }
-    file.flush().map_err(|e| e.to_string())?;
+    file.flush()?;
     Ok(count)
 }
 

@@ -10,6 +10,7 @@ pub mod action;
 pub mod command;
 pub mod config;
 pub(crate) mod daemon;
+pub mod error;
 pub mod feel;
 pub mod gestures;
 pub mod keys;

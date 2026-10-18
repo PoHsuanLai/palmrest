@@ -5,6 +5,7 @@ use super::discover::{self, SYS_HIDRAW};
 use super::evdev::{self, SYS_INPUT, UDEV_DATA};
 use super::hidraw::{self, Access, READ_LEN};
 use crate::config::DeviceSource;
+use crate::error::Error;
 use crate::recording::RecordedSource;
 use crate::sensor::magic_mouse::{Layout, Support};
 use crate::sensor::{EvdevMultitouch, EvdevSpec, MagicMouseHid, Sensor, evdev::EVENT_LEN};
@@ -59,22 +60,21 @@ impl Opened {
 }
 
 /// Finds and opens the configured source; the error is the line to log.
-pub fn open(source: DeviceSource, purpose: Purpose) -> Result<Opened, String> {
+pub fn open(source: DeviceSource, purpose: Purpose) -> Result<Opened, Error> {
     match source {
         DeviceSource::Hidraw => open_hidraw(purpose),
         DeviceSource::Evdev => open_evdev(),
     }
 }
 
-fn open_hidraw(purpose: Purpose) -> Result<Opened, String> {
-    let found = discover::find(Path::new(SYS_HIDRAW)).ok_or("Magic Mouse not found")?;
+fn open_hidraw(purpose: Purpose) -> Result<Opened, Error> {
+    let found = discover::find(Path::new(SYS_HIDRAW)).ok_or(Error::NoMagicMouse)?;
     let d = found.device;
     if d.layout == Layout::Report29 {
-        return Err(format!(
-            "{} is a {:?}, whose report 0x29 palmrest does not decode; \
-             set [device] source = \"evdev\" to read it through the kernel driver",
-            found.info.path, d.model
-        ));
+        return Err(Error::UndecodableReport {
+            path: found.info.path,
+            model: d.model,
+        });
     }
     if d.support == Support::Untested {
         eprintln!(
@@ -87,11 +87,9 @@ fn open_hidraw(purpose: Purpose) -> Result<Opened, String> {
         Purpose::Run => Access::ReadWrite,
         Purpose::Record => Access::ReadOnly,
     };
-    let (fd, access) = hidraw::open(&found.node, want).map_err(|e| {
-        format!(
-            "cannot read {}: {e}; no gestures until it can be read",
-            found.node.display()
-        )
+    let (fd, access) = hidraw::open(&found.node, want).map_err(|source| Error::HidrawOpen {
+        node: found.node.clone(),
+        source,
     })?;
     match (purpose, access) {
         (Purpose::Run, Access::ReadWrite) => {
@@ -113,11 +111,13 @@ fn open_hidraw(purpose: Purpose) -> Result<Opened, String> {
     })
 }
 
-fn open_evdev() -> Result<Opened, String> {
-    let (node, info) = evdev::find(Path::new(SYS_INPUT), Path::new(UDEV_DATA))
-        .ok_or("no multitouch mouse evdev node found")?;
-    let (fd, spec) =
-        evdev::open(&node).map_err(|e| format!("cannot read {}: {e}", node.display()))?;
+fn open_evdev() -> Result<Opened, Error> {
+    let (node, info) =
+        evdev::find(Path::new(SYS_INPUT), Path::new(UDEV_DATA)).ok_or(Error::NoEvdevNode)?;
+    let (fd, spec) = evdev::open(&node).map_err(|source| Error::EvdevOpen {
+        node: node.clone(),
+        source,
+    })?;
     eprintln!(
         "palmrest: reading {} through evdev (untested beyond the Magic Mouse)",
         info.path

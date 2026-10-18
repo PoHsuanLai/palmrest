@@ -4,6 +4,7 @@ use super::ReplayReport;
 use crate::config::{self, Config};
 use crate::daemon::Env;
 use crate::daemon::latency::{self, LatencyReport};
+use crate::error::Error;
 use crate::recording::{self, Record, RecordedSource};
 use crate::replay::compare::compare_curves_from;
 use crate::replay::{Timing, replay_from};
@@ -15,10 +16,15 @@ pub(super) fn replay(
     report: ReplayReport,
     timing: Timing,
     env: &Env,
-) -> Result<(), String> {
-    let name = file.display();
-    let bytes = std::fs::read(file).map_err(|e| format!("{name}: {e}"))?;
-    let rec = recording::read(&bytes).map_err(|e| format!("{name}: {e}"))?;
+) -> Result<(), Error> {
+    let bytes = std::fs::read(file).map_err(|source| Error::File {
+        path: file.to_path_buf(),
+        source,
+    })?;
+    let rec = recording::read(&bytes).map_err(|source| Error::Recording {
+        path: file.to_path_buf(),
+        source,
+    })?;
     let cfg = config::load(env.config_dir.as_deref()).config;
     match report {
         ReplayReport::Latency => {

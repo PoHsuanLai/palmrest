@@ -12,6 +12,7 @@ mod tests;
 use crate::config::{self, Config};
 use crate::daemon::uinput::Origin;
 use crate::daemon::{self, Env};
+use crate::error::Error;
 use crate::replay::Timing;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -131,7 +132,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> ExitCode {
     let args: Vec<&str> = args.iter().map(String::as_str).collect();
     let env = Env::from_lookup(|k| std::env::var(k).ok());
     let result = match parse(&args) {
-        None => Err(USAGE.to_owned()),
+        None => Err(Error::Usage(USAGE)),
         Some(command) => execute(command, &env),
     };
     match result {
@@ -143,7 +144,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> ExitCode {
     }
 }
 
-fn execute(command: Command, env: &Env) -> Result<(), String> {
+fn execute(command: Command, env: &Env) -> Result<(), Error> {
     match command {
         Command::Daemon { origin } => daemon::run(env, origin),
         Command::Record { file, total } => record::record(&file, total, env),
