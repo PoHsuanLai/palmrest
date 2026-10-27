@@ -1,7 +1,6 @@
 //! The lock machine over short report sequences.
 
 use super::{AxisLock, FREE};
-use crate::feel::curve::CurveParams;
 use crate::feel::lock_event::{Hold, LockEvent, Sample};
 use crate::feel::rule::{Lock, LockParams, Threshold};
 use crate::time::Mono;
@@ -13,10 +12,7 @@ const PARAMS: LockParams = LockParams {
     ratio: 1.5,
     timeout: Duration::from_millis(250),
     speed: 32,
-    velocity_gain_max: 2.0,
-    repeat_gain_max: 1.0,
     detent_px: 60.0,
-    curve: CurveParams::Classic,
 };
 
 fn one(x: i32, y: i32) -> Vec<Sample> {

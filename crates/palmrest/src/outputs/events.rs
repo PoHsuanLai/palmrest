@@ -4,7 +4,6 @@
 //! creating a device; the emitter only writes these bytes.
 
 use super::pad::PadFrame;
-use crate::feel::WheelDelta;
 use crate::keys::KeyCombo;
 
 pub const EV_SYN: u16 = 0x00;
@@ -12,10 +11,6 @@ pub const EV_KEY: u16 = 0x01;
 pub const EV_REL: u16 = 0x02;
 pub const EV_ABS: u16 = 0x03;
 pub const SYN_REPORT: u16 = 0;
-pub const REL_HWHEEL: u16 = 0x06;
-pub const REL_WHEEL: u16 = 0x08;
-pub const REL_WHEEL_HI_RES: u16 = 0x0b;
-pub const REL_HWHEEL_HI_RES: u16 = 0x0c;
 pub const ABS_X: u16 = 0x00;
 pub const ABS_Y: u16 = 0x01;
 pub const ABS_MT_SLOT: u16 = 0x2f;
@@ -53,27 +48,6 @@ impl InputEvent {
         b[18..20].copy_from_slice(&self.code.to_le_bytes());
         b[20..24].copy_from_slice(&self.value.to_le_bytes());
         b
-    }
-}
-
-/// A wheel frame's events: detents before hi-res, horizontal before vertical, zeros skipped,
-/// then SYN.
-pub fn wheel_events(d: &WheelDelta) -> Vec<InputEvent> {
-    let rel = [
-        (REL_HWHEEL, d.horizontal),
-        (REL_WHEEL, d.vertical),
-        (REL_HWHEEL_HI_RES, d.horizontal_hi_res),
-        (REL_WHEEL_HI_RES, d.vertical_hi_res),
-    ];
-    let body: Vec<InputEvent> = rel
-        .iter()
-        .filter(|(_, v)| *v != 0)
-        .map(|&(c, v)| ev(EV_REL, c, v))
-        .collect();
-    if body.is_empty() {
-        body
-    } else {
-        body.into_iter().chain([SYN]).collect()
     }
 }
 
@@ -188,25 +162,6 @@ mod tests {
     use crate::outputs::pad::{CENTRE, PadPoint};
 
     #[test]
-    fn wheel_event_order() {
-        let d = WheelDelta {
-            horizontal: 0,
-            vertical: -1,
-            horizontal_hi_res: 0,
-            vertical_hi_res: -12,
-        };
-        assert_eq!(
-            wheel_events(&d),
-            [
-                ev(EV_REL, REL_WHEEL, -1),
-                ev(EV_REL, REL_WHEEL_HI_RES, -12),
-                SYN
-            ]
-        );
-        assert!(wheel_events(&WheelDelta::default()).is_empty());
-    }
-
-    #[test]
     fn keys_press_and_release_in_order() {
         let got = key_events(&KeyCombo::alt(Key::LEFT));
         assert_eq!(
@@ -260,8 +215,8 @@ mod tests {
 
     #[test]
     fn event_bytes_layout() {
-        let b = ev(EV_REL, REL_WHEEL, -1).to_bytes();
+        let b = ev(EV_KEY, BTN_LEFT, -1).to_bytes();
         assert_eq!(&b[..16], &[0; 16]);
-        assert_eq!(&b[16..], &[2, 0, 8, 0, 0xff, 0xff, 0xff, 0xff]);
+        assert_eq!(&b[16..], &[1, 0, 0x10, 0x01, 0xff, 0xff, 0xff, 0xff]);
     }
 }

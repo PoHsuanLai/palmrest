@@ -8,27 +8,24 @@
 //! virtual devices until the settings change, and the log says why.
 
 use super::discover::Backoff;
-use crate::config::{Config, ForeignOutput};
-use crate::feel::WheelDelta;
+use crate::config::Config;
 use crate::keys::KeyCombo;
 use crate::outputs::pad::PadFrame;
 use crate::outputs::{Emitter, OutputError};
 use crate::time::Mono;
 
 /// Makes the emitter for a configuration (the uinput one in the daemon).
-pub type Factory = Box<dyn Fn(ForeignOutput, &[KeyCombo]) -> Result<Box<dyn Emitter>, OutputError>>;
+pub type Factory = Box<dyn Fn(&[KeyCombo]) -> Result<Box<dyn Emitter>, OutputError>>;
 
 /// What the devices are made from; a change recreates them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Shape {
-    foreign: ForeignOutput,
     combos: Vec<KeyCombo>,
 }
 
 impl Shape {
     fn of(c: &Config) -> Self {
         Self {
-            foreign: c.foreign_output,
             combos: c.gestures.gesture_action_map.combos(),
         }
     }
@@ -149,7 +146,7 @@ impl Devices {
             if now < retry_at {
                 return self;
             }
-            self.state = match (self.factory)(self.shape.foreign, &self.shape.combos) {
+            self.state = match (self.factory)(&self.shape.combos) {
                 Ok(emitter) => State::Ready { emitter, cuts },
                 Err(err) => failed_build(&err, now, backoff, cuts),
             };
@@ -221,10 +218,6 @@ impl Devices {
 impl Emitter for Devices {
     fn pad(&mut self, f: &PadFrame) -> Result<(), OutputError> {
         self.write(|e| e.pad(f))
-    }
-
-    fn wheel(&mut self, d: &WheelDelta) -> Result<(), OutputError> {
-        self.write(|e| e.wheel(d))
     }
 
     fn key(&mut self, k: &KeyCombo) -> Result<(), OutputError> {

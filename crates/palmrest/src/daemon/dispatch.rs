@@ -21,7 +21,6 @@ pub fn dispatch(
                 Ok(())
             }
             Out::Pad(f) => emitter.pad(f),
-            Out::Wheel(w) => emitter.wheel(w),
             Out::Key(k) => emitter.key(k),
             Out::Deferred(d) => match plan(d, desktop) {
                 Effect::Host(action) => {

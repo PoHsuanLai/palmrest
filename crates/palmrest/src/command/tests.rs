@@ -58,17 +58,11 @@ fn arguments_parse_to_commands() {
             replay(ReplayReport::Outputs, Timing::Calibrated),
         ),
         (
-            "latency wins over a bad curve",
-            &["replay", "f", "--curve", "x", "--latency"],
+            "latency",
+            &["replay", "f", "--latency"],
             replay(ReplayReport::Latency, Timing::Arrival),
         ),
-        (
-            "curve comparison",
-            &["replay", "f", "--calibrated", "--curve", "mac-like"],
-            replay(ReplayReport::Curves, Timing::Calibrated),
-        ),
-        ("an unknown curve", &["replay", "f", "--curve", "x"], None),
-        ("a curve with no name", &["replay", "f", "--curve"], None),
+        ("an unknown flag", &["replay", "f", "--curve", "x"], None),
         (
             "probe",
             &["--check-uinput"],

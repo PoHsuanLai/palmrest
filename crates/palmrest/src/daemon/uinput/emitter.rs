@@ -1,13 +1,11 @@
-//! The real emitter: palmrest's virtual touchpad, wheel and keyboard, through a `Session`.
+//! The real emitter: palmrest's virtual touchpad and keyboard, through a `Session`.
 //!
 //! A pad frame is one call to `Session::send`, so one batch. What goes wrong is told to the
 //! owner of the emitter (`Devices`) through `OutputError`, which decides when to rebuild and
 //! when to stop: a lost frame here is counted and nothing more.
 
-use crate::config::ForeignOutput;
-use crate::feel::WheelDelta;
 use crate::keys::KeyCombo;
-use crate::outputs::events::{InputEvent, PadEncoder, key_events, wheel_events};
+use crate::outputs::events::{InputEvent, PadEncoder, key_events};
 use crate::outputs::pad::PadFrame;
 use crate::outputs::{Emitter, OutputError};
 use turnstile_client::{
@@ -35,33 +33,24 @@ impl FramesLost {
 /// The devices of one daemon run.
 pub struct UinputEmitter<S: Session> {
     session: S,
-    touchpad: Option<DeviceId>,
-    wheel: Option<DeviceId>,
+    touchpad: DeviceId,
     keys: Option<DeviceId>,
     encoder: PadEncoder,
     lost: FramesLost,
 }
 
 impl<S: Session> UinputEmitter<S> {
-    /// Opens a session on `source` and makes the devices `foreign` needs, plus a keyboard for
-    /// `combos` (none if empty).
+    /// Opens a session on `source` and makes the touchpad, plus a keyboard for `combos` (none if
+    /// empty).
     pub fn create<D: DeviceSource<Session = S>>(
         source: &D,
-        foreign: ForeignOutput,
         combos: &[KeyCombo],
     ) -> Result<Self, OutputError> {
         let mut session = source.open().map_err(|e| match e {
             ClientError::Io(io) => OutputError::Unavailable(format!("{UNREACHABLE}: {io}")),
             other => OutputError::Unavailable(other.to_string()),
         })?;
-        let touchpad = match foreign {
-            ForeignOutput::Touchpad => Some(make(&mut session, &Create::touchpad())?),
-            _ => None,
-        };
-        let wheel = match foreign {
-            ForeignOutput::Wheel => Some(make(&mut session, &Create::wheel())?),
-            _ => None,
-        };
+        let touchpad = make(&mut session, &Create::touchpad())?;
         let keys = match key_codes(combos) {
             codes if codes.is_empty() => None,
             codes => Some(make(&mut session, &Create::keys(codes))?),
@@ -69,7 +58,6 @@ impl<S: Session> UinputEmitter<S> {
         Ok(Self {
             session,
             touchpad,
-            wheel,
             keys,
             encoder: PadEncoder::default(),
             lost: FramesLost::default(),
@@ -106,11 +94,7 @@ impl<S: Session> Emitter for UinputEmitter<S> {
     fn pad(&mut self, f: &PadFrame) -> Result<(), OutputError> {
         let (encoder, events) = self.encoder.encode(f);
         self.encoder = encoder;
-        self.send(self.touchpad, &events)
-    }
-
-    fn wheel(&mut self, d: &WheelDelta) -> Result<(), OutputError> {
-        self.send(self.wheel, &wheel_events(d))
+        self.send(Some(self.touchpad), &events)
     }
 
     fn key(&mut self, k: &KeyCombo) -> Result<(), OutputError> {

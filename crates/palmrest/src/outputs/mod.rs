@@ -1,4 +1,4 @@
-//! O2-O4: the virtual devices foreign clients see, behind one seam.
+//! O2-O3: the virtual devices foreign clients see, behind one seam.
 //!
 //! `Emitter` is a real seam: the daemon writes through the uinput emitter, and every test
 //! writes through `RecordingEmitter`, so no test ever creates an input device.
@@ -6,7 +6,6 @@
 pub mod events;
 pub mod pad;
 
-use crate::feel::WheelDelta;
 use crate::keys::KeyCombo;
 use pad::PadFrame;
 use thiserror::Error;
@@ -28,7 +27,6 @@ pub enum OutputError {
 /// Where foreign-client frames go.
 pub trait Emitter {
     fn pad(&mut self, f: &PadFrame) -> Result<(), OutputError>;
-    fn wheel(&mut self, d: &WheelDelta) -> Result<(), OutputError>;
     fn key(&mut self, k: &KeyCombo) -> Result<(), OutputError>;
 }
 
@@ -36,7 +34,6 @@ pub trait Emitter {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Emitted {
     Pad(PadFrame),
-    Wheel(WheelDelta),
     Key(KeyCombo),
 }
 
@@ -49,11 +46,6 @@ pub struct RecordingEmitter {
 impl Emitter for RecordingEmitter {
     fn pad(&mut self, f: &PadFrame) -> Result<(), OutputError> {
         self.emitted.push(Emitted::Pad(*f));
-        Ok(())
-    }
-
-    fn wheel(&mut self, d: &WheelDelta) -> Result<(), OutputError> {
-        self.emitted.push(Emitted::Wheel(*d));
         Ok(())
     }
 

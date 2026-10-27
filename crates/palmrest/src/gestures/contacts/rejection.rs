@@ -2,12 +2,23 @@
 //! moves. Palm and Resting are for life: a thumb resting on the side stays rejected even if it
 //! later shuffles.
 
-use crate::config::{Config, Rejection};
+use crate::config::{Ms, Um, Units};
 use crate::gestures::bands::Bands;
 use crate::sensor::Shape;
 use crate::sensor::lattice::Ellipse;
 use crate::time::Mono;
 use crate::touch::{Point, TouchId};
+
+/// P1: a Magic Mouse contact smaller than this is a light touch.
+const LIGHT_TOUCH_SIZE_MAX: Units = Units(2);
+/// P2: a band contact that moves this far sideways is a finger (an ellipse with the next).
+const RESTING_MOVE_FLOOR_X: Um = Um(1154);
+/// P2: a band contact that moves this far up or down is a finger.
+const RESTING_MOVE_FLOOR_Y: Um = Um(429);
+/// P2: a band contact that has not moved for this long is resting.
+const RESTING_WINDOW: Ms = Ms(150);
+/// P3: a Magic Mouse contact at least this long on its major axis is a palm.
+const LARGE_CONTACT_MAJOR: Units = Units(240);
 
 /// A frame contact on the grid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,7 +54,7 @@ pub(super) struct Track {
 }
 
 /// A new track, classed as it landed.
-pub(super) fn land(t: &Touch, now: Mono, cfg: &Config, bands: &Bands) -> Track {
+pub(super) fn land(t: &Touch, now: Mono, bands: &Bands) -> Track {
     let k = Track {
         id: t.id,
         landed: now,
@@ -51,35 +62,34 @@ pub(super) fn land(t: &Touch, now: Mono, cfg: &Config, bands: &Bands) -> Track {
         at: t.at,
         class: Contact::Firm,
     };
-    let class = match cfg.rejection {
-        Rejection::Off => Contact::Firm,
-        Rejection::On if is_palm(t, cfg) => Contact::Palm,
-        Rejection::On if bands.contains(t.at) => Contact::Watched,
-        Rejection::On => by_size(t, cfg),
+    let class = if is_palm(t) {
+        Contact::Palm
+    } else if bands.contains(t.at) {
+        Contact::Watched
+    } else {
+        by_size(t)
     };
     Track { class, ..k }
 }
 
 /// A known track moved to `t`, reclassed.
-pub(super) fn advance(k: Track, t: &Touch, now: Mono, cfg: &Config) -> Track {
+pub(super) fn advance(k: Track, t: &Touch, now: Mono) -> Track {
     let k = Track { at: t.at, ..k };
-    let class = match (cfg.rejection, k.class) {
-        (Rejection::Off, _) => Contact::Firm,
-        (_, Contact::Palm | Contact::Resting) => k.class,
-        _ if is_palm(t, cfg) => Contact::Palm,
-        (_, Contact::Watched) => watched(k, t, now, cfg),
-        _ => by_size(t, cfg),
+    let class = match k.class {
+        Contact::Palm | Contact::Resting => k.class,
+        _ if is_palm(t) => Contact::Palm,
+        Contact::Watched => watched(k, t, now),
+        _ => by_size(t),
     };
     Track { class, ..k }
 }
 
 /// P2: a watched contact that moves far enough is a finger; one that sits out its window rests.
-fn watched(k: Track, t: &Touch, now: Mono, cfg: &Config) -> Contact {
-    let p = &cfg.palm_rejection;
-    let floor = Ellipse::of(p.resting_move_floor_x_um, p.resting_move_floor_y_um);
+fn watched(k: Track, t: &Touch, now: Mono) -> Contact {
+    let floor = Ellipse::of(RESTING_MOVE_FLOOR_X, RESTING_MOVE_FLOOR_Y);
     if floor.reached(k.at.delta_from(k.origin)) {
-        by_size(t, cfg)
-    } else if now.since(k.landed) >= p.resting_window_ms.duration() {
+        by_size(t)
+    } else if now.since(k.landed) >= RESTING_WINDOW.duration() {
         Contact::Resting
     } else {
         Contact::Watched
@@ -87,21 +97,17 @@ fn watched(k: Track, t: &Touch, now: Mono, cfg: &Config) -> Contact {
 }
 
 /// P1 on the Magic Mouse's size; a sensor without one reports firm touches only.
-fn by_size(t: &Touch, cfg: &Config) -> Contact {
+fn by_size(t: &Touch) -> Contact {
     match t.shape {
-        Shape::MagicMouse(m) if i32::from(m.size) < cfg.palm_rejection.light_touch_size_max.0 => {
-            Contact::Light
-        }
+        Shape::MagicMouse(m) if i32::from(m.size) < LIGHT_TOUCH_SIZE_MAX.0 => Contact::Light,
         Shape::MagicMouse(_) | Shape::Unmeasured => Contact::Firm,
     }
 }
 
 /// P3 on the Magic Mouse's major axis; a sensor without one never sees a palm.
-fn is_palm(t: &Touch, cfg: &Config) -> bool {
+fn is_palm(t: &Touch) -> bool {
     match t.shape {
-        Shape::MagicMouse(m) => {
-            i32::from(m.major) >= cfg.palm_rejection.large_contact_major_units.0
-        }
+        Shape::MagicMouse(m) => i32::from(m.major) >= LARGE_CONTACT_MAJOR.0,
         Shape::Unmeasured => false,
     }
 }

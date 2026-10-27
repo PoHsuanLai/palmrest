@@ -3,12 +3,10 @@
 
 mod decode;
 mod evdev_parity;
-mod feel_presets;
 mod fixtures_current;
 mod gestures_replay;
 mod recorded_calibration;
 mod reference_cases;
-mod reference_feel;
 mod support;
 
 /// Fails when a test file is added but not included above, or left as its own binary beside

@@ -5,7 +5,7 @@
 //! or a palm. Every MayBegin is closed by exactly one Ended or Cancelled, so a host never holds
 //! a gesture open.
 
-use crate::feel::{AxisLock, Hold, Lock, LockEvent, LockParams, Quanta, Sample};
+use crate::feel::{AxisLock, Hold, Lock, LockEvent, LockParams, Sample};
 use crate::time::Mono;
 use palmrest_protocol::{Axis, GestureId, Phase};
 
@@ -49,10 +49,6 @@ pub struct ScrollEvent {
     pub axis: Option<Axis>,
     /// Finger-direction px on `axis`; zero except for Changed.
     pub px: f64,
-    /// The wheel device's share of a Changed sample.
-    pub quanta: Quanta,
-    /// The gain over the base ratio of a Changed sample; zero otherwise.
-    pub gain: f64,
 }
 
 impl ScrollG {
@@ -101,7 +97,7 @@ impl ScrollG {
         }
     }
 
-    /// Cancels and forgets everything, the repeat history included (device gone).
+    /// Cancels and forgets everything (device gone).
     pub fn disconnect(self) -> (Self, Vec<ScrollEvent>) {
         let (s, ev) = self.cancel();
         (
@@ -127,8 +123,6 @@ impl ScrollG {
                 if let Some((id, fingers, Stage::Began(axis))) = self.current {
                     out.push(ScrollEvent {
                         px: m.px,
-                        quanta: m.quanta,
-                        gain: m.gain,
                         ..event(id, Phase::Changed, fingers, Some(axis))
                     });
                 }
@@ -199,7 +193,5 @@ fn event(gesture: GestureId, phase: Phase, fingers: u8, axis: Option<Axis>) -> S
         fingers,
         axis,
         px: 0.0,
-        quanta: Quanta::default(),
-        gain: 0.0,
     }
 }

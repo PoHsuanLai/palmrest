@@ -1,10 +1,9 @@
-//! Opening the configured sensor (`device.source`): the node, the sensor that decodes it, and
-//! what the socket announces about it.
+//! Opening the sensor: the Magic Mouse's hidraw node, or its evdev node when palmrest cannot
+//! decode the mouse's report; the sensor that decodes it, and what the socket announces about it.
 
 use super::discover::{self, SYS_HIDRAW};
 use super::evdev::{self, SYS_INPUT, UDEV_DATA};
 use super::hidraw::{self, Access, READ_LEN};
-use crate::config::DeviceSource;
 use crate::error::Error;
 use crate::recording::RecordedSource;
 use crate::sensor::evdev::EVENT_LEN;
@@ -43,11 +42,15 @@ impl Opened {
     }
 }
 
-/// Finds and opens the configured source; the error is the line to log.
-pub fn open(source: DeviceSource, purpose: Purpose) -> Result<Opened, Error> {
-    match source {
-        DeviceSource::Hidraw => open_hidraw(purpose),
-        DeviceSource::Evdev => open_evdev(),
+/// Finds and opens the mouse: its hidraw node, or its evdev node through the kernel's multitouch
+/// driver when palmrest does not decode its report. The error is the line to log.
+pub fn open(purpose: Purpose) -> Result<Opened, Error> {
+    match open_hidraw(purpose) {
+        Err(undecodable @ Error::UndecodableReport { .. }) => {
+            eprintln!("palmrest: {undecodable}; reading it through evdev instead");
+            open_evdev()
+        }
+        other => other,
     }
 }
 
@@ -62,8 +65,7 @@ fn open_hidraw(purpose: Purpose) -> Result<Opened, Error> {
     }
     if d.support == Support::Untested {
         eprintln!(
-            "palmrest: {:?} ({:04x}:{:04x}) has never been run with palmrest; \
-             if gestures misbehave, try [device] source = \"evdev\"",
+            "palmrest: {:?} ({:04x}:{:04x}) has never been run with palmrest",
             d.model, d.vendor, d.product
         );
     }

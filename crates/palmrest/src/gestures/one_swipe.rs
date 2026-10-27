@@ -5,11 +5,20 @@
 //! decision itself (12.3.6), so this only ever adds a key for foreign clients.
 
 use super::swipe::FingerDirection;
-use crate::config::Config;
+use crate::config::{Fraction, Ms, Um};
 use crate::feel::{Hold, Lock, Sample};
 use crate::sensor::lattice::{Along, units};
 use crate::time::Mono;
 use crate::touch::{Point, TouchId};
+
+/// How far one finger slides to swipe.
+const TRAVEL: Um = Um(11538);
+/// The longest the swipe may take from the axis lock.
+const MAX_DURATION: Ms = Ms(400);
+/// How much further sideways than up or down (2.0).
+const AXIS_RATIO: Fraction = Fraction(2000);
+/// How soon before lifting the last movement must be.
+const SETTLE: Ms = Ms(50);
 
 /// A one-finger stroke being watched.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,11 +47,10 @@ impl OneSwipe {
         contacts: &[Sample],
         lock: Lock,
         now: Mono,
-        cfg: &Config,
         hold: Hold,
     ) -> (Self, Option<FingerDirection>) {
         match (self, contacts) {
-            (Self::Tracking(s), []) => (Self::Idle, judge(&s, now, cfg)),
+            (Self::Tracking(s), []) => (Self::Idle, judge(&s, now)),
             (_, []) => (Self::Idle, None),
             (_, _) if hold == Hold::Held => (Self::Void, None),
             (Self::Void, _) => (Self::Void, None),
@@ -91,14 +99,13 @@ impl Stroke {
 }
 
 /// The G4 rule at lift: far enough, fast enough, straight enough, still moving.
-fn judge(s: &Stroke, lift: Mono, cfg: &Config) -> Option<FingerDirection> {
-    let g = &cfg.gestures;
+fn judge(s: &Stroke, lift: Mono) -> Option<FingerDirection> {
     let locked_at = s.locked_at?;
     let travel = s.at.delta_from(s.origin);
-    let far = travel.x.abs() >= units(g.g4_travel_um, Along::X);
-    let quick = lift.since(locked_at) <= g.g4_max_duration_ms.duration();
-    let straight = f64::from(travel.x.abs()) >= g.g4_axis_ratio.ratio() * f64::from(travel.y.abs());
-    let moving = lift.since(s.last_motion) <= g.g4_settle_ms.duration();
+    let far = travel.x.abs() >= units(TRAVEL, Along::X);
+    let quick = lift.since(locked_at) <= MAX_DURATION.duration();
+    let straight = f64::from(travel.x.abs()) >= AXIS_RATIO.ratio() * f64::from(travel.y.abs());
+    let moving = lift.since(s.last_motion) <= SETTLE.duration();
     (far && quick && straight && moving).then_some(if travel.x > 0 {
         FingerDirection::Right
     } else {
@@ -119,7 +126,6 @@ mod tests {
 
     /// A stroke of `n` samples 10 ms apart, locking X at sample 2, then a lift `settle` ms later.
     fn stroke(dx: i32, dy: i32, n: u64, settle: u64) -> Option<FingerDirection> {
-        let cfg = Config::default();
         let mut s = OneSwipe::Idle;
         for i in 0..n {
             let lock = if i >= 2 {
@@ -134,7 +140,6 @@ mod tests {
                 &at(dx * i as i32, dy * i as i32),
                 lock,
                 Mono::from_millis(i * 10),
-                &cfg,
                 Hold::Open,
             );
             assert_eq!(fired, None);
@@ -144,7 +149,6 @@ mod tests {
             &[],
             Lock::X,
             Mono::from_millis((n - 1) * 10 + settle),
-            &cfg,
             Hold::Open,
         )
         .1
@@ -176,7 +180,6 @@ mod tests {
 
     #[test]
     fn a_second_finger_voids_it() {
-        let cfg = Config::default();
         let two = vec![
             Sample {
                 id: TouchId(1),
@@ -187,18 +190,11 @@ mod tests {
                 at: Point::new(500, 0),
             },
         ];
-        let (s, _) = OneSwipe::Idle.step(&at(0, 0), Lock::X, Mono(0), &cfg, Hold::Open);
-        let (s, _) = s.step(&two, Lock::X, Mono::from_millis(10), &cfg, Hold::Open);
-        let (s, _) = s.step(
-            &at(400, 0),
-            Lock::X,
-            Mono::from_millis(20),
-            &cfg,
-            Hold::Open,
-        );
+        let (s, _) = OneSwipe::Idle.step(&at(0, 0), Lock::X, Mono(0), Hold::Open);
+        let (s, _) = s.step(&two, Lock::X, Mono::from_millis(10), Hold::Open);
+        let (s, _) = s.step(&at(400, 0), Lock::X, Mono::from_millis(20), Hold::Open);
         assert_eq!(
-            s.step(&[], Lock::X, Mono::from_millis(30), &cfg, Hold::Open)
-                .1,
+            s.step(&[], Lock::X, Mono::from_millis(30), Hold::Open).1,
             None
         );
     }

@@ -37,8 +37,7 @@ pub struct Count(pub u16);
 #[serde(transparent)]
 pub struct Um(pub i32);
 
-/// Signed raw Magic Mouse 2 report units: the pre-millimetre keys (read, converted and
-/// reported as deprecated) and the Magic Mouse's own contact size and major axis.
+/// Signed raw Magic Mouse 2 report units: the Magic Mouse's own contact size and major axis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Units(pub i32);

@@ -1,17 +1,13 @@
-//! Acceptance 12.8 item 3: the reference gesture cases, twice: against the matching palmrest
-//! unit (`AxisLock`, `SwipeG`) with the case's own parameters, and end to end through `replay`
-//! of the committed fixture with the same points. The cases and their expected values are
+//! Acceptance 12.8 item 3: the reference gesture cases, against the matching palmrest unit
+//! (`AxisLock`, `SwipeG`) with the case's own parameters. The cases and their expected values are
 //! frozen from the retired Python daemon's test suite; points are in its unsigned reading.
 
-use palmrest::action::{Action, Deferred, Desktop, Effect, plan};
-use palmrest::config::{Config, Count, ForeignOutput, Fraction, Rejection};
-use palmrest::feel::{
-    AxisLock, CurveParams, Hold, LockEvent, LockParams, Sample, Threshold, WheelDelta,
-};
+use palmrest::Mono;
+use palmrest::action::{Action, Desktop, Effect, plan};
+use palmrest::config::Config;
+use palmrest::feel::{AxisLock, Hold, LockEvent, LockParams, Sample, Threshold};
 use palmrest::gestures::{FingerDirection, SwipeEvent, SwipeG};
-use palmrest::replay::{Timing, outs, replay};
-use palmrest::{Mono, Out};
-use palmrest_protocol::{HostAction, Workspace};
+use palmrest_protocol::HostAction;
 use std::time::Duration;
 
 // ---- the case helpers ---------------------------------------------------------------------
@@ -22,88 +18,47 @@ fn touch(x: i32, y: i32, id: u8) -> Sample {
     Sample { id: t.id, at: t.at }
 }
 
-/// `ScrollAxisLock(speed=32, acceleration_max=1.0, lock_threshold=40)`.
+/// `ScrollAxisLock(speed=32, lock_threshold=40)`.
 const PARAMS: LockParams = LockParams {
     threshold: Threshold::both(40),
     ratio: 1.5,
     timeout: Duration::from_millis(250),
     speed: 32,
-    velocity_gain_max: 2.0,
-    repeat_gain_max: 1.0,
     detent_px: 60.0,
-    curve: CurveParams::Classic,
 };
 
-/// `drag(filt, points, start=10.0, step=0.008)`: the summed hi-res (h, v) in the wheel's frame.
+/// `drag(filt, points, start=10.0, step=0.008)`: the summed px (horizontal, vertical).
 fn drag(
     lock: AxisLock,
     points: &[Vec<Sample>],
     start_ms: u64,
     step_ms: u64,
-) -> (AxisLock, (i32, i32)) {
+) -> (AxisLock, (f64, f64)) {
     points
         .iter()
         .enumerate()
-        .fold((lock, (0, 0)), |(l, (h, v)), (i, p)| {
+        .fold((lock, (0.0, 0.0)), |(l, (h, v)), (i, p)| {
             let (l, ev) = l.step(
                 p,
                 Mono::from_millis(start_ms + step_ms * i as u64),
                 &PARAMS,
                 Hold::Open,
             );
-            let (dh, dv) = hi_res(&ev);
+            let (dh, dv) = scrolled_px(&ev);
             (l, (h + dh, v + dv))
         })
 }
 
-fn hi_res(ev: &[LockEvent]) -> (i32, i32) {
-    ev.iter().fold((0, 0), |(h, v), e| match e {
-        LockEvent::Moved(m) => {
-            let w = WheelDelta::on(m.axis, m.quanta);
-            (h + w.horizontal_hi_res, v + w.vertical_hi_res)
-        }
+fn scrolled_px(ev: &[LockEvent]) -> (f64, f64) {
+    ev.iter().fold((0.0, 0.0), |(h, v), e| match e {
+        LockEvent::Moved(m) if m.axis == palmrest_protocol::Axis::X => (h + m.px, v),
+        LockEvent::Moved(m) => (h, v + m.px),
         _ => (h, v),
     })
 }
 
 fn points(n: i32, f: impl Fn(i32) -> Vec<Sample>) -> Vec<Vec<Sample>> {
     (0..n).map(f).collect()
-}
-
-/// The config the cases construct, for the end-to-end runs.
-fn reference_config() -> Config {
-    let mut c = Config {
-        rejection: Rejection::Off,
-        foreign_output: ForeignOutput::Wheel,
-        ..Config::default()
-    };
-    c.scroll.speed = Count(32);
-    c.scroll.repeat_gain_max = Fraction(1000);
-    c
-}
-
-/// The wheel hi-res totals (h, v) and the workspace actions of a fixture.
-fn run(name: &str) -> ((i32, i32), Vec<Deferred>) {
-    let all = outs(&replay(
-        &crate::support::load(name),
-        reference_config(),
-        Timing::Arrival,
-    ));
-    let wheel = all.iter().fold((0, 0), |(h, v), o| match o {
-        Out::Wheel(w) => (h + w.horizontal_hi_res, v + w.vertical_hi_res),
-        _ => (h, v),
-    });
-    let actions = all
-        .iter()
-        .filter_map(|o| {
-            if let Out::Deferred(a) = o {
-                Some(a.clone())
-            } else {
-                None
-            }
-        })
-        .collect();
-    (wheel, actions)
 }
 
 // ---- ScrollAxisLock ---------------------------------------------------------------------
@@ -117,52 +72,46 @@ enum Scrolls {
 }
 
 impl Scrolls {
-    fn holds(self, (h, v): (i32, i32)) -> bool {
+    fn holds(self, (h, v): (f64, f64)) -> bool {
         match self {
-            Scrolls::OnlyVertical => v != 0 && h == 0,
-            Scrolls::OnlyHorizontal => h != 0 && v == 0,
-            Scrolls::Nothing => (h, v) == (0, 0),
+            Scrolls::OnlyVertical => v != 0.0 && h == 0.0,
+            Scrolls::OnlyHorizontal => h != 0.0 && v == 0.0,
+            Scrolls::Nothing => (h, v) == (0.0, 0.0),
         }
     }
 }
 
 #[test]
 fn the_axis_lock_scrolls_the_dominant_axis_only() {
-    // (name, the fingers at step i, the recorded fixture, what the drag scrolls)
-    type Case = (&'static str, fn(i32) -> Vec<Sample>, &'static str, Scrolls);
+    // (name, the fingers at step i, what the drag scrolls)
+    type Case = (&'static str, fn(i32) -> Vec<Sample>, Scrolls);
     const AXIS_CASES: &[Case] = &[
         (
             "one finger vertical",
             |i| vec![touch(1000, 1000 + i * 6, 1)],
-            "case_one_vertical",
             Scrolls::OnlyVertical,
         ),
         (
             "one finger horizontal",
             |i| vec![touch(1000 + i * 6, 1000, 1)],
-            "case_one_horizontal",
             Scrolls::OnlyHorizontal,
         ),
         (
             "two fingers never horizontal",
             |i| vec![touch(900 + i * 6, 1000, 1), touch(1300 + i * 6, 1000, 2)],
-            "case_two_never_horizontal",
             Scrolls::Nothing,
         ),
         (
             "two fingers vertical",
             |i| vec![touch(900, 1000 + i * 6, 1), touch(1300, 1000 + i * 6, 2)],
-            "case_two_vertical",
             Scrolls::OnlyVertical,
         ),
     ];
-    for &(name, fingers, fixture, want) in AXIS_CASES {
-        let (_, unit) = drag(AxisLock::default(), &points(40, fingers), 10_000, 8);
-        assert!(want.holds(unit), "{name}: the unit scrolled {unit:?}");
-        let (recorded, _) = run(fixture);
+    for &(name, fingers, want) in AXIS_CASES {
+        let (_, scrolled) = drag(AxisLock::default(), &points(40, fingers), 10_000, 8);
         assert!(
-            want.holds(recorded),
-            "{name}: the fixture scrolled {recorded:?}"
+            want.holds(scrolled),
+            "{name}: the unit scrolled {scrolled:?}"
         );
     }
 }
@@ -174,17 +123,7 @@ fn three_fingers_do_nothing() {
             .map(|k| touch(500 + 400 * i32::from(k), 1000 + i * 6, k))
             .collect()
     });
-    assert_eq!(drag(AxisLock::default(), &pts, 10_000, 8).1, (0, 0));
-    let all = outs(&replay(
-        &crate::support::load("case_three_nothing"),
-        reference_config(),
-        Timing::Arrival,
-    ));
-    assert!(
-        crate::support::scrolls(&all).is_empty(),
-        "no scroll phases at all: {all:?}"
-    );
-    assert!(!all.iter().any(|o| matches!(o, Out::Wheel(_) | Out::Pad(_))));
+    assert_eq!(drag(AxisLock::default(), &pts, 10_000, 8).1, (0.0, 0.0));
 }
 
 #[test]
@@ -201,20 +140,7 @@ fn finger_count_change_does_not_jump() {
         &PARAMS,
         Hold::Open,
     );
-    assert_eq!(hi_res(&ev), (0, 0));
-    // End to end: nothing is emitted at the report where the second finger lands.
-    let steps = replay(
-        &crate::support::load("case_count_change"),
-        reference_config(),
-        Timing::Arrival,
-    );
-    let last = steps.last().unwrap();
-    assert!(!last.outs.iter().any(|o| matches!(o, Out::Wheel(_))));
-    assert!(
-        crate::support::scrolls(&last.outs)
-            .iter()
-            .all(|s| s.3 == 0.0 && s.4 == 0.0)
-    );
+    assert_eq!(scrolled_px(&ev), (0.0, 0.0));
 }
 
 #[test]
@@ -236,49 +162,25 @@ fn scroll_steps_are_finer_than_a_detent_tenth() {
             Hold::Open,
         );
         lock = l;
-        let (_, v) = hi_res(&ev);
-        if v != 0 {
+        let (_, v) = scrolled_px(&ev);
+        if v != 0.0 {
             emitted.push(v);
         }
     }
     assert!(!emitted.is_empty(), "expected high-resolution scroll");
-    assert!(emitted.iter().any(|v| v.abs() % 12 != 0));
-    // End to end, the wheel and the socket both step finer than a tenth of a detent.
-    let all = outs(&replay(
-        &crate::support::load("case_fine_steps"),
-        reference_config(),
-        Timing::Arrival,
-    ));
-    let wheel: Vec<i32> = all
-        .iter()
-        .filter_map(|o| {
-            if let Out::Wheel(w) = o {
-                Some(w.vertical_hi_res)
-            } else {
-                None
-            }
-        })
-        .collect();
-    assert!(wheel.iter().any(|v| v.abs() % 12 != 0));
-    let px: Vec<f32> = crate::support::scrolls(&all)
-        .iter()
-        .map(|s| s.4)
-        .filter(|v| *v != 0.0)
-        .collect();
     assert!(
-        px.iter().any(|v| v.abs() < 6.0),
-        "a socket step below 6 px (a tenth of a 60 px detent)"
+        emitted.iter().any(|v| v.abs() < 6.0),
+        "a step below 6 px (a tenth of a 60 px detent)"
     );
 }
 
 // ---- DesktopSwipe -------------------------------------------------------------------------
 
 fn swipe_run(frames: &[(u64, Vec<Sample>)]) -> Vec<FingerDirection> {
-    let cfg = Config::default();
     let mut s = SwipeG::default();
     let mut fired = Vec::new();
     for (ms, pair) in frames {
-        let (n, ev) = s.step(pair, Mono::from_millis(*ms), &cfg, Hold::Open);
+        let (n, ev) = s.step(pair, Mono::from_millis(*ms), Hold::Open);
         s = n;
         fired.extend(ev.into_iter().filter_map(|e| {
             if let SwipeEvent::Fire(d) = e {
@@ -318,10 +220,6 @@ fn two_finger_swipe_right_switches_desktop_left() {
         kwin(&map.two_finger_swipe_left),
         "Switch One Desktop to the Right"
     );
-    assert_eq!(
-        run("case_swipe_right").1,
-        [Deferred::Workspace(Workspace::Prev)]
-    );
 }
 
 #[test]
@@ -338,41 +236,27 @@ fn long_two_finger_drag_switches_again_after_cooldown() {
         swipe_run(&frames),
         [FingerDirection::Right, FingerDirection::Right]
     );
-    assert_eq!(
-        run("case_long_drag").1,
-        [
-            Deferred::Workspace(Workspace::Prev),
-            Deferred::Workspace(Workspace::Prev)
-        ]
-    );
 }
 
 #[test]
 fn these_drags_do_not_switch_desktop() {
-    // (name, the fingers at step i, the recorded fixture)
-    type Case = (&'static str, fn(i32) -> Vec<Sample>, &'static str);
+    // (name, the fingers at step i)
+    type Case = (&'static str, fn(i32) -> Vec<Sample>);
     const NO_SWITCH_CASES: &[Case] = &[
-        (
-            "two-finger vertical drag",
-            |i| {
-                vec![
-                    touch(900 + i * 3, 1000 + i * 10, 1),
-                    touch(1300 + i * 3, 1000 + i * 10, 2),
-                ]
-            },
-            "case_vertical_no_switch",
-        ),
-        (
-            "one finger never switches",
-            |i| vec![touch(500 + i * 20, 1000, 1)],
-            "case_one_never_switches",
-        ),
+        ("two-finger vertical drag", |i| {
+            vec![
+                touch(900 + i * 3, 1000 + i * 10, 1),
+                touch(1300 + i * 3, 1000 + i * 10, 2),
+            ]
+        }),
+        ("one finger never switches", |i| {
+            vec![touch(500 + i * 20, 1000, 1)]
+        }),
     ];
-    for &(name, fingers, fixture) in NO_SWITCH_CASES {
+    for &(name, fingers) in NO_SWITCH_CASES {
         let frames: Vec<_> = (0..60)
             .map(|i| (10_000 + 8 * i as u64, fingers(i)))
             .collect();
         assert!(swipe_run(&frames).is_empty(), "{name}: the unit switched");
-        assert!(run(fixture).1.is_empty(), "{name}: the fixture switched");
     }
 }

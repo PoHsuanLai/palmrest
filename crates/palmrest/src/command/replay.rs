@@ -1,4 +1,4 @@
-//! `palmrest replay FILE`: a recording through the core, printed as outputs, latency or curves.
+//! `palmrest replay FILE`: a recording through the core, printed as outputs or latency.
 
 use super::ReplayReport;
 use crate::config::{self, Config};
@@ -6,7 +6,6 @@ use crate::daemon::Env;
 use crate::daemon::latency::{self, LatencyReport};
 use crate::error::Error;
 use crate::recording::{self, Record, RecordedSource};
-use crate::replay::compare::compare_curves_from;
 use crate::replay::{Timing, replay_from};
 use std::path::Path;
 
@@ -30,10 +29,6 @@ pub(super) fn replay(
         ReplayReport::Latency => {
             print_latency(&latency::measure(&rec.source, &rec.records, cfg));
         }
-        ReplayReport::Curves => print!(
-            "{}",
-            compare_curves_from(&rec.source, &rec.records, &cfg, timing).table()
-        ),
         ReplayReport::Outputs => print_outputs(&rec.source, &rec.records, cfg, timing),
     }
     Ok(())

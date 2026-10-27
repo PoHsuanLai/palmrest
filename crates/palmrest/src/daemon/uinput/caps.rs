@@ -1,13 +1,13 @@
-//! What each of palmrest's three virtual devices is: its identity and its capabilities.
+//! What each of palmrest's two virtual devices is: its identity and its capabilities.
 //!
-//! The input service builds the same three from constants of its own, so a change here is a
+//! The input service builds the same two from constants of its own, so a change here is a
 //! change there. Only the direct path (`direct.rs`) uses the capabilities; the service path
 //! sends just which device it wants.
 
 use crate::outputs::events::{
     ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_SLOT, ABS_MT_TRACKING_ID, ABS_X, ABS_Y, BTN_LEFT,
     BTN_TOOL_DOUBLETAP, BTN_TOOL_FINGER, BTN_TOOL_QUADTAP, BTN_TOOL_TRIPLETAP, BTN_TOUCH,
-    PAD_SLOTS, REL_HWHEEL, REL_HWHEEL_HI_RES, REL_WHEEL, REL_WHEEL_HI_RES,
+    PAD_SLOTS,
 };
 use crate::outputs::pad::{PAD_X_MAX, PAD_Y_MAX, UNITS_PER_MM};
 use turnstile_client::Create;
@@ -28,12 +28,6 @@ pub(super) const TOUCHPAD: Identity = Identity {
     name: "palmrest touchpad",
     vendor: 0x0001,
     product: 0x0002,
-};
-/// O4's identity.
-pub(super) const WHEEL: Identity = Identity {
-    name: "palmrest wheel",
-    vendor: 0x0001,
-    product: 0x0001,
 };
 /// O3's identity.
 pub(super) const KEYS: Identity = Identity {
@@ -100,18 +94,10 @@ pub(super) fn touchpad_caps() -> Caps {
     }
 }
 
-pub(super) fn wheel_caps() -> Caps {
-    Caps {
-        rels: vec![REL_WHEEL, REL_HWHEEL, REL_WHEEL_HI_RES, REL_HWHEEL_HI_RES],
-        ..Caps::default()
-    }
-}
-
 /// The identity and capabilities `request` asks for; none for a device that is not palmrest's.
 pub(super) fn wanted(request: &Create) -> Option<(Identity, Caps)> {
     match request {
         Create::Touchpad => Some((TOUCHPAD, touchpad_caps())),
-        Create::Wheel => Some((WHEEL, wheel_caps())),
         Create::Keys(codes) => Some((
             KEYS,
             Caps {
@@ -119,7 +105,7 @@ pub(super) fn wanted(request: &Create) -> Option<(Identity, Caps)> {
                 ..Caps::default()
             },
         )),
-        Create::Keyboard | Create::Pointer(_) => None,
+        Create::Wheel | Create::Keyboard | Create::Pointer(_) => None,
     }
 }
 
@@ -132,11 +118,6 @@ mod tests {
         let pad = touchpad_caps();
         assert!(pad.rels.is_empty(), "the touchpad cannot scroll by wheel");
         assert_eq!(pad.props, [INPUT_PROP_POINTER]);
-        let wheel = wheel_caps();
-        assert!(
-            wheel.keys.is_empty() && wheel.abs.is_empty(),
-            "the wheel cannot click or point"
-        );
     }
 
     #[test]
@@ -147,9 +128,9 @@ mod tests {
             wanted(&Create::touchpad()).map(|(id, _)| id.name),
             Some("palmrest touchpad")
         );
-        assert_eq!(
-            wanted(&Create::wheel()).map(|(id, _)| id.name),
-            Some("palmrest wheel")
+        assert!(
+            wanted(&Create::wheel()).is_none(),
+            "palmrest has no wheel device"
         );
         assert!(
             wanted(&Create::keyboard()).is_none(),

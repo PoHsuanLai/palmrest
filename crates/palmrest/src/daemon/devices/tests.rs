@@ -12,7 +12,7 @@ use turnstile_client::fake::{FakeSource, SendMode};
 fn waits_then_becomes_ready_and_rebuilds_on_a_shape_change() {
     let calls = Rc::new(Cell::new(0));
     let c2 = calls.clone();
-    let factory: Factory = Box::new(move |_, _| {
+    let factory: Factory = Box::new(move |_| {
         c2.set(c2.get() + 1);
         if c2.get() < 2 {
             Err(OutputError::Unavailable("no acl yet".into()))
@@ -25,20 +25,28 @@ fn waits_then_becomes_ready_and_rebuilds_on_a_shape_change() {
     assert_eq!(calls.get(), 1);
     let mut d = d.poll(Mono::from_millis(500));
     assert_eq!(calls.get(), 1, "not before the backoff");
-    assert!(
-        d.wheel(&WheelDelta::default()).is_ok(),
-        "frames are dropped while waiting"
-    );
+    assert!(d.pad(&land()).is_ok(), "frames are dropped while waiting");
     let d = d.poll(Mono::from_millis(1000));
     assert_eq!(calls.get(), 2);
     let d = d.reconfigure(&cfg, Mono::from_millis(1100));
     assert_eq!(calls.get(), 2, "same shape, same devices");
-    let wheel = Config {
-        foreign_output: ForeignOutput::Wheel,
-        ..Config::default()
-    };
-    let _ = d.reconfigure(&wheel, Mono::from_millis(1200));
+    let _ = d.reconfigure(&other_gestures(), Mono::from_millis(1200));
     assert_eq!(calls.get(), 3);
+}
+
+fn land() -> PadFrame {
+    PadFrame::Land {
+        fingers: 2,
+        at: crate::outputs::pad::CENTRE,
+        spacing: 400,
+    }
+}
+
+/// A configuration whose gestures press other keys than the default's.
+fn other_gestures() -> Config {
+    let mut c = Config::default();
+    c.gestures.gesture_action_map.one_finger_swipe_left = crate::action::Action::None;
+    c
 }
 
 /// An emitter whose every write fails, as a destroyed uinput device does.
@@ -46,9 +54,6 @@ struct Destroyed;
 
 impl Emitter for Destroyed {
     fn pad(&mut self, _: &PadFrame) -> Result<(), OutputError> {
-        Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
-    }
-    fn wheel(&mut self, _: &WheelDelta) -> Result<(), OutputError> {
         Err(std::io::Error::from(std::io::ErrorKind::NotFound).into())
     }
     fn key(&mut self, _: &KeyCombo) -> Result<(), OutputError> {
@@ -60,7 +65,7 @@ impl Emitter for Destroyed {
 fn a_failed_write_rebuilds_the_devices_and_reports_the_loss_once() {
     let built = Rc::new(Cell::new(0));
     let b = built.clone();
-    let factory: Factory = Box::new(move |_, _| {
+    let factory: Factory = Box::new(move |_| {
         b.set(b.get() + 1);
         if b.get() == 1 {
             Ok(Box::new(Destroyed))
@@ -72,14 +77,11 @@ fn a_failed_write_rebuilds_the_devices_and_reports_the_loss_once() {
     assert_eq!(built.get(), 1);
     assert_eq!(d.take_health(), Health::Fine);
 
-    assert!(
-        d.wheel(&WheelDelta::default()).is_err(),
-        "the failure is returned once"
-    );
+    assert!(d.pad(&land()).is_err(), "the failure is returned once");
     assert_eq!(d.take_health(), Health::LostDevices);
     assert_eq!(d.take_health(), Health::Fine, "asking resets it");
     assert!(
-        d.wheel(&WheelDelta::default()).is_ok(),
+        d.pad(&land()).is_ok(),
         "frames while rebuilding are dropped without another error"
     );
 
@@ -87,31 +89,16 @@ fn a_failed_write_rebuilds_the_devices_and_reports_the_loss_once() {
     assert_eq!(built.get(), 1, "not before the backoff");
     let mut d = d.poll(Mono::from_millis(1010));
     assert_eq!(built.get(), 2, "rebuilt once the delay has passed");
-    assert!(d.wheel(&WheelDelta::default()).is_ok());
+    assert!(d.pad(&land()).is_ok());
     assert_eq!(d.take_health(), Health::Fine);
 }
 /// Devices whose emitter talks to `source`, as the daemon's do to the real service.
 fn service_devices(source: &FakeSource, c: &Config) -> Devices {
     let source = source.clone();
-    let factory: Factory = Box::new(move |foreign, combos| {
-        Ok(Box::new(UinputEmitter::create(&source, foreign, combos)?) as Box<dyn Emitter>)
+    let factory: Factory = Box::new(move |combos| {
+        Ok(Box::new(UinputEmitter::create(&source, combos)?) as Box<dyn Emitter>)
     });
     Devices::new(factory, c, Mono(0))
-}
-
-fn wheel_config() -> Config {
-    Config {
-        foreign_output: ForeignOutput::Wheel,
-        ..Config::default()
-    }
-}
-
-fn scroll_one() -> WheelDelta {
-    WheelDelta {
-        vertical: 1,
-        vertical_hi_res: 120,
-        ..WheelDelta::default()
-    }
 }
 
 /// Lets the wait after a loss pass and the rebuild happen, `round` * 10 s into the run.
@@ -123,11 +110,11 @@ fn settle(d: Devices, round: u64) -> Devices {
 #[test]
 fn a_closed_connection_is_rebuilt_after_the_pause() {
     let source = FakeSource::new();
-    let mut d = service_devices(&source, &wheel_config());
+    let mut d = service_devices(&source, &Config::default());
     assert_eq!(source.state().opened, 1);
 
     source.state().send_mode = SendMode::Close;
-    assert!(d.wheel(&scroll_one()).is_err());
+    assert!(d.pad(&land()).is_err());
     assert_eq!(d.take_health(), Health::LostDevices);
 
     source.state().send_mode = SendMode::Accept;
@@ -135,16 +122,16 @@ fn a_closed_connection_is_rebuilt_after_the_pause() {
     assert_eq!(source.state().opened, 1, "not before the pause");
     let mut d = d.poll(Mono::from_millis(1010));
     assert_eq!(source.state().opened, 2, "a new connection");
-    assert!(d.wheel(&scroll_one()).is_ok());
+    assert!(d.pad(&land()).is_ok());
     assert_eq!(source.state().sent.len(), 1, "and frames flow again");
 }
 
 #[test]
 fn frames_the_service_drops_cost_no_rebuild() {
     let source = FakeSource::new();
-    let mut d = service_devices(&source, &wheel_config());
+    let mut d = service_devices(&source, &Config::default());
     source.state().send_mode = SendMode::Drop;
-    assert!(d.wheel(&scroll_one()).is_ok());
+    assert!(d.pad(&land()).is_ok());
     assert_eq!(d.take_health(), Health::Fine);
     assert_eq!(source.state().opened, 1);
 }
@@ -153,7 +140,7 @@ fn frames_the_service_drops_cost_no_rebuild() {
 fn a_refusal_ends_the_devices_after_three_more_tries_until_the_settings_change() {
     let source = FakeSource::new();
     source.state().refuse_next = Some(Reason::NotAllowed);
-    let mut d = service_devices(&source, &wheel_config());
+    let mut d = service_devices(&source, &Config::default());
     for round in 1..=8 {
         source.state().refuse_next = Some(Reason::NotAllowed);
         d = d.poll(Mono::from_millis(round * 10_000));
@@ -163,35 +150,27 @@ fn a_refusal_ends_the_devices_after_three_more_tries_until_the_settings_change()
         4,
         "the first try and three more, then no more"
     );
-    assert!(
-        d.wheel(&scroll_one()).is_ok(),
-        "a dead pad drops frames quietly"
-    );
+    assert!(d.pad(&land()).is_ok(), "a dead pad drops frames quietly");
     assert!(source.state().sent.is_empty());
 
     source.state().refuse_next = None;
-    let mut d = d.reconfigure(&Config::default(), Mono::from_millis(100_000));
+    let mut d = d.reconfigure(&other_gestures(), Mono::from_millis(100_000));
     assert_eq!(
         source.state().created.len(),
         6,
         "a change of settings tries again: the touchpad and the keys of the default gestures"
     );
-    let land = PadFrame::Land {
-        fingers: 2,
-        at: crate::outputs::pad::CENTRE,
-        spacing: 400,
-    };
-    assert!(d.pad(&land).is_ok());
+    assert!(d.pad(&land()).is_ok());
     assert_eq!(source.state().sent.len(), 1);
 }
 
 #[test]
 fn a_service_that_keeps_closing_ends_the_devices() {
     let source = FakeSource::new();
-    let mut d = service_devices(&source, &wheel_config());
+    let mut d = service_devices(&source, &Config::default());
     source.state().send_mode = SendMode::Close;
     for round in 1..=8 {
-        let _ = d.wheel(&scroll_one());
+        let _ = d.pad(&land());
         d = settle(d, round);
     }
     assert_eq!(
@@ -204,12 +183,12 @@ fn a_service_that_keeps_closing_ends_the_devices() {
 #[test]
 fn a_frame_that_goes_through_clears_the_count() {
     let source = FakeSource::new();
-    let mut d = service_devices(&source, &wheel_config());
+    let mut d = service_devices(&source, &Config::default());
     for round in 1..=6 {
         source.state().send_mode = SendMode::Accept;
-        assert!(d.wheel(&scroll_one()).is_ok());
+        assert!(d.pad(&land()).is_ok());
         source.state().send_mode = SendMode::Close;
-        assert!(d.wheel(&scroll_one()).is_err());
+        assert!(d.pad(&land()).is_err());
         d = settle(d, round);
     }
     assert_eq!(

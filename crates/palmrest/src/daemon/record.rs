@@ -1,12 +1,11 @@
-//! `palmrest record FILE`: raw reads of the configured sensor with their arrival times, for
-//! replay and tuning (a v1 file for hidraw, v2 naming the node's geometry for evdev).
+//! `palmrest record FILE`: raw reads of the Magic Mouse with their arrival times, for replay
+//! and tuning.
 //!
 //! Opens the node read-only: it only listens, exactly as the kernel and any other reader do,
 //! and sends nothing to the mouse.
 
 use super::hidraw::{self, Read};
 use super::source::{self, Purpose};
-use crate::config::DeviceSource;
 use crate::error::Error;
 use crate::recording::{Record, encode_record, header};
 use std::fs::OpenOptions;
@@ -38,8 +37,8 @@ fn create_private(path: &Path) -> std::io::Result<std::fs::File> {
 }
 
 /// Records until a limit is reached; returns the number of reads captured.
-pub fn record(out: &Path, source: DeviceSource, limits: Limits) -> Result<usize, Error> {
-    let opened = source::open(source, Purpose::Record)?;
+pub fn record(out: &Path, limits: Limits) -> Result<usize, Error> {
+    let opened = source::open(Purpose::Record)?;
     let info = &opened.info;
     let mut file = create_private(out).map_err(|source| Error::File {
         path: out.to_path_buf(),

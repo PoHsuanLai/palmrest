@@ -1,8 +1,6 @@
 //! What the tracker asks the daemon to do, and how a fired gesture becomes outputs.
 
 use crate::action::{Action, Deferred, Gesture, key_of};
-use crate::config::G4Mode;
-use crate::feel::WheelDelta;
 use crate::keys::KeyCombo;
 use crate::outputs::pad::PadFrame;
 use palmrest_protocol::{LockState, Over, TapKind, ToHost};
@@ -16,8 +14,6 @@ pub enum Out {
     Host(ToHost),
     /// A virtual touchpad frame (O2).
     Pad(PadFrame),
-    /// A wheel frame (O4).
-    Wheel(WheelDelta),
     /// A key combination on the virtual keyboard (O3).
     Key(KeyCombo),
     /// What a gesture asks of the person's session, which the daemon plans for the desktop it
@@ -35,12 +31,9 @@ pub enum Source {
 /// The outputs of `action` fired by a gesture, given who holds the pointer.
 ///
 /// SmartZoom is realised as the `Tap{One}` the host receives, so it produces nothing here. G4
-/// produces nothing while a host holds the pointer (the host runs its own page swipe) or in
-/// `Native` mode.
-pub fn action_outs(action: &Action, source: Source, claimed: Over, g4: G4Mode) -> Vec<Out> {
-    let silenced =
-        source == Source::OneFingerSwipe && (claimed == Over::Ours || g4 == G4Mode::Native);
-    if silenced {
+/// produces nothing while a host holds the pointer (the host runs its own page swipe).
+pub fn action_outs(action: &Action, source: Source, claimed: Over) -> Vec<Out> {
+    if source == Source::OneFingerSwipe && claimed == Over::Ours {
         return vec![];
     }
     match key_of(action) {
@@ -53,12 +46,7 @@ pub fn action_outs(action: &Action, source: Source, claimed: Over, g4: G4Mode) -
 pub fn tap_outs(kind: TapKind, action: &Action, claimed: Over, t_ns: u64) -> Vec<Out> {
     let host = (claimed == Over::Ours).then_some(Out::Host(ToHost::Tap { kind, t_ns }));
     host.into_iter()
-        .chain(action_outs(
-            action,
-            Source::Other,
-            claimed,
-            G4Mode::InjectAndScroll,
-        ))
+        .chain(action_outs(action, Source::Other, claimed))
         .collect()
 }
 
@@ -90,35 +78,18 @@ mod tests {
     use palmrest_protocol::Workspace;
 
     #[test]
-    fn g4_is_silent_under_a_claim_and_in_native_mode() {
+    fn g4_is_silent_under_a_claim() {
         let back = Action::Back;
         let key = vec![Out::Key(KeyCombo::alt(Key::LEFT))];
         assert_eq!(
-            action_outs(
-                &back,
-                Source::OneFingerSwipe,
-                Over::NotOurs,
-                G4Mode::InjectAndScroll
-            ),
+            action_outs(&back, Source::OneFingerSwipe, Over::NotOurs),
             key
         );
         assert_eq!(
-            action_outs(
-                &back,
-                Source::OneFingerSwipe,
-                Over::Ours,
-                G4Mode::InjectAndScroll
-            ),
+            action_outs(&back, Source::OneFingerSwipe, Over::Ours),
             vec![]
         );
-        assert_eq!(
-            action_outs(&back, Source::OneFingerSwipe, Over::NotOurs, G4Mode::Native),
-            vec![]
-        );
-        assert_eq!(
-            action_outs(&back, Source::Other, Over::Ours, G4Mode::Native),
-            key
-        );
+        assert_eq!(action_outs(&back, Source::Other, Over::Ours), key);
     }
 
     #[test]

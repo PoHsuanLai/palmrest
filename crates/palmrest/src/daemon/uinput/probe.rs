@@ -1,14 +1,13 @@
 //! `palmrest --check-uinput`: can this machine make palmrest's virtual devices?
 
 use super::emitter::UinputEmitter;
-use crate::config::ForeignOutput;
 use crate::outputs::OutputError;
 use turnstile_client::DeviceSource;
 
 /// Opens a session on `source` and makes the touchpad, then lets go of both: the same first
 /// steps the daemon takes, so a pass here means the daemon will get its devices.
 pub fn probe<D: DeviceSource>(source: &D) -> Result<(), OutputError> {
-    UinputEmitter::create(source, ForeignOutput::Touchpad, &[]).map(drop)
+    UinputEmitter::create(source, &[]).map(drop)
 }
 
 #[cfg(test)]

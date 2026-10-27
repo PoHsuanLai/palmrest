@@ -1,4 +1,5 @@
-//! Finding and opening a multitouch mouse's evdev node (`device.source = "evdev"`).
+//! Finding and opening a multitouch mouse's evdev node: what the daemon reads when palmrest does
+//! not decode the mouse's hidraw report.
 //!
 // TODO(untested): run only against the Magic Mouse's node. The capability test below is what
 // the kernel's multitouch protocol B promises; that any other mouse passes it, or that a

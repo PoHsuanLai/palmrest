@@ -4,7 +4,6 @@
 //! device: `now` is an argument and every effect is an `Out`, so a recording replays to exactly
 //! the outputs the live daemon produced.
 
-mod coast;
 mod foreign;
 mod out;
 
@@ -12,7 +11,7 @@ use out::while_unlocked;
 pub use out::{Out, Source, action_outs, tap_gesture, tap_outs};
 
 use crate::action::Gesture;
-use crate::config::{Config, Rejection};
+use crate::config::{Config, Count, Fraction, Ms};
 use crate::feel::{Hold, Lock, LockParams};
 use crate::gestures::{
     Bands, ClickGuard, Contacts, FingerDirection, MotionWindow, Moving, OneSwipe, PalmTurn, Press,
@@ -21,6 +20,17 @@ use crate::gestures::{
 use crate::sensor::{Frame, Surface, magic_mouse};
 use crate::time::Mono;
 use palmrest_protocol::{ActiveTouch, LockState, Over, ToHost};
+
+/// Touches this soon after a click are ignored.
+const CLICK_GUARD: Ms = Ms(200);
+// TODO(untested): P5 is in the sensor's own mouse counts per second, so it means whatever
+// another mouse's CPI makes it; only the Magic Mouse's counts are known.
+/// P5: the mouse is moving above this speed, in the sensor's mouse counts per second...
+const MOUSE_MOVING_THRESHOLD: Count = Count(200);
+/// ...measured over this window...
+const MOUSE_MOVING_WINDOW: Ms = Ms(100);
+/// ...and the axis lock is this much harder to pass meanwhile (2.0).
+const MOUSE_MOVING_LOCK_MULTIPLIER: Fraction = Fraction(2000);
 
 /// Every piece of gesture state between reports.
 #[derive(Debug, Clone, PartialEq)]
@@ -37,7 +47,6 @@ pub struct Tracker {
     foreign: foreign::Foreign,
     claimed: Over,
     session: LockState,
-    peak_gain: f64,
     touching: ActiveTouch,
 }
 
@@ -62,7 +71,6 @@ impl Tracker {
             foreign: foreign::Foreign::default(),
             claimed: Over::NotOurs,
             session: LockState::Unlocked,
-            peak_gain: 1.0,
             touching: ActiveTouch::Up,
         }
     }
@@ -103,20 +111,14 @@ impl Tracker {
         self.claimed
     }
 
-    /// The largest gain over the base ratio any scroll sample has had so far (for
-    /// `palmrest replay --curve`).
-    pub fn peak_gain(&self) -> f64 {
-        self.peak_gain
-    }
-
-    /// When `tick` next has work to do, if ever: a delayed touchpad lift or a glide frame.
+    /// When `tick` next has work to do, if ever: a delayed touchpad lift.
     pub fn deadline(&self) -> Option<Mono> {
         self.foreign.deadline()
     }
 
     /// A host claimed or released the pointer (the aggregate over subscribers). Contacts on the
-    /// virtual touchpad lift at once when a host takes over, and a synthesized glide ends, so
-    /// nothing is left pressed or moving under our own surfaces.
+    /// virtual touchpad lift at once when a host takes over, so nothing is left pressed under our
+    /// own surfaces.
     pub fn claim(self, over: Over) -> (Self, Vec<Out>) {
         let (foreign, out) = match over {
             Over::Ours => self.foreign.lift_now(),
@@ -133,7 +135,7 @@ impl Tracker {
     }
 
     /// The virtual devices were lost and rebuilt: nothing is down on them any more, so the pad
-    /// and a running glide are forgotten without writing anything.
+    /// is forgotten without writing anything.
     pub fn devices_lost(self) -> Self {
         Self {
             foreign: foreign::Foreign::default(),
@@ -141,9 +143,9 @@ impl Tracker {
         }
     }
 
-    /// Time passed with no report: a delayed touchpad lift or a glide frame that has come due.
+    /// Time passed with no report: a delayed touchpad lift that has come due.
     pub fn tick(self, now: Mono) -> (Self, Vec<Out>) {
-        let (foreign, out) = self.foreign.tick(now, self.claimed, &self.cfg);
+        let (foreign, out) = self.foreign.tick(now);
         (Self { foreign, ..self }, out)
     }
 
@@ -169,20 +171,17 @@ impl Tracker {
 
     /// Consumes one frame.
     pub fn step(self, r: &Frame, now: Mono) -> (Self, Vec<Out>) {
-        let pr = &self.cfg.palm_rejection;
-        let (click, press) = self
-            .click
-            .step(r.buttons, now, pr.click_guard_ms.duration());
+        let (click, press) = self.click.step(r.buttons, now, CLICK_GUARD.duration());
         let hold = click.hold(now);
-        let window = pr.mouse_moving_window_ms.duration();
+        let window = MOUSE_MOVING_WINDOW.duration();
         let motion = self.motion.step(r.motion, now, window);
-        let moving = motion.moving(f64::from(pr.mouse_moving_threshold_counts_s.0), window);
-        let multiplier = match (self.cfg.rejection, moving) {
-            (Rejection::On, Moving::Yes) => pr.mouse_moving_lock_multiplier.ratio(),
-            _ => 1.0,
+        let moving = motion.moving(f64::from(MOUSE_MOVING_THRESHOLD.0), window);
+        let multiplier = match moving {
+            Moving::Yes => MOUSE_MOVING_LOCK_MULTIPLIER.ratio(),
+            Moving::No => 1.0,
         };
-        let bands = Bands::resolve(&self.cfg.palm_rejection, &self.surface);
-        let (contacts, seen) = self.contacts.step(&r.contacts, now, &self.cfg, &bands);
+        let bands = Bands::resolve(&self.surface);
+        let (contacts, seen) = self.contacts.step(&r.contacts, now, &bands);
         let s = Self {
             click,
             motion,
@@ -234,28 +233,18 @@ impl Tracker {
         let mut foreign = self.foreign.clone();
         let mut out = Vec::new();
         for e in events {
-            let (f, o) = foreign.scroll(e, self.claimed, &self.cfg, now);
+            let (f, o) = foreign.scroll(e, self.claimed, now);
             foreign = f;
             out.extend(o);
         }
-        let peak_gain = events.iter().map(|e| e.gain).fold(self.peak_gain, f64::max);
-        (
-            Self {
-                foreign,
-                peak_gain,
-                ..self
-            },
-            out,
-        )
+        (Self { foreign, ..self }, out)
     }
 
     /// G4, G5 and the double-taps, after the scroll has seen the report.
     fn gestures(self, samples: &[crate::feel::Sample], now: Mono, hold: Hold) -> (Self, Vec<Out>) {
         let map = &self.cfg.gestures.gesture_action_map;
         let mut out = Vec::new();
-        let (one, g4) = self
-            .one
-            .step(samples, self.scroll.lock(), now, &self.cfg, hold);
+        let (one, g4) = self.one.step(samples, self.scroll.lock(), now, hold);
         if let Some(dir) = g4 {
             let g = pick(
                 dir,
@@ -266,14 +255,13 @@ impl Tracker {
                 map.action_for(g),
                 Source::OneFingerSwipe,
                 self.claimed,
-                self.cfg.gestures.g4_foreign_mode,
             ));
         }
-        let (swipe, events) = self.swipe.clone().step(samples, now, &self.cfg, hold);
+        let (swipe, events) = self.swipe.clone().step(samples, now, hold);
         for e in events {
             out.extend(self.swipe_outs(e, now));
         }
-        let (tap, kind) = self.tap.clone().step(samples, now, &self.cfg, hold);
+        let (tap, kind) = self.tap.clone().step(samples, now, hold);
         if let Some(kind) = kind {
             out.extend(tap_outs(
                 kind,
@@ -316,12 +304,7 @@ impl Tracker {
                     Gesture::TwoFingerSwipeLeft,
                 );
                 let action = self.cfg.gestures.gesture_action_map.action_for(g);
-                action_outs(
-                    action,
-                    Source::Other,
-                    self.claimed,
-                    self.cfg.gestures.g4_foreign_mode,
-                )
+                action_outs(action, Source::Other, self.claimed)
             }
         }
     }

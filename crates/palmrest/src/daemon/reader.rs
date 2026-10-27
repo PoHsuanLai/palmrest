@@ -38,14 +38,12 @@ pub struct Reader {
 }
 
 impl Reader {
-    /// Finds the configured sensor, reads it until it goes away, and starts over; never
-    /// returns. `device.source` is read at each attempt, so a change applies at the next
-    /// reconnect.
+    /// Finds the sensor, reads it until it goes away, and starts over; never returns.
     pub fn run(mut self) {
         let mut backoff = Backoff::DEVICE;
         loop {
             self = self.housekeeping();
-            match source::open(self.tracker.config().device.source, Purpose::Run) {
+            match source::open(Purpose::Run) {
                 Err(e) => eprintln!("palmrest: {e}"),
                 Ok(opened) => {
                     backoff = Backoff::DEVICE;

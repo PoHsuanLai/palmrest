@@ -3,7 +3,7 @@
 //! device or the kernel. The live figure needs the mouse (FINDINGS).
 
 use crate::config::Config;
-use crate::outputs::events::{PadEncoder, key_events, wheel_events};
+use crate::outputs::events::{PadEncoder, key_events};
 use crate::recording::{Record, RecordedSource};
 use crate::replay::{Timing, feed_from};
 use crate::stamp::StampClock;
@@ -57,7 +57,6 @@ pub fn measure(source: &RecordedSource, records: &[Record], cfg: Config) -> Late
                     encoder = e;
                     ev
                 }
-                Out::Wheel(w) => wheel_events(w),
                 Out::Key(k) => key_events(k),
                 Out::Host(_) | Out::Deferred(_) => vec![],
             };

@@ -52,8 +52,8 @@ pub fn run(env: &Env, origin: Origin) -> Result<(), Error> {
         .map_err(Error::SocketThread)?;
     eprintln!("palmrest: listening on {}", path.display());
     let route = LiveRoute::live(origin);
-    let factory: Factory = Box::new(move |foreign, combos| {
-        Ok(Box::new(UinputEmitter::create(&route, foreign, combos)?) as Box<dyn Emitter>)
+    let factory: Factory = Box::new(move |combos| {
+        Ok(Box::new(UinputEmitter::create(&route, combos)?) as Box<dyn Emitter>)
     });
     let now = hidraw::now();
     let reader = reader::Reader {

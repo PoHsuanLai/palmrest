@@ -93,25 +93,20 @@ fn the_reader_accepts_every_bound_and_every_word() {
 }
 
 #[test]
-fn a_bound_just_outside_a_ranged_key_is_refused() {
-    // The rows whose reader has a range: the schema's bounds are that range exactly.
-    for path in [
-        "scroll.speed",
-        "momentum.b",
-        "palm_rejection.rear_band_percent",
-    ] {
-        let key = Schema::palmrest()
-            .key
-            .into_iter()
-            .find(|k| k.path == path)
-            .unwrap();
-        let Kind::Bounded { min, max, .. } = key.kind else {
-            panic!("{path} is bounded")
-        };
-        assert_eq!(warnings(path, &(max + 1).into()).len(), 1, "{path} above");
-        if min > 0 {
-            assert_eq!(warnings(path, &(min - 1).into()).len(), 1, "{path} below");
-        }
+fn a_bound_just_outside_the_scroll_speed_is_refused() {
+    // The schema's bounds are the reader's range exactly.
+    let path = "scroll.speed";
+    let key = Schema::palmrest()
+        .key
+        .into_iter()
+        .find(|k| k.path == path)
+        .unwrap();
+    let Kind::Bounded { min, max, .. } = key.kind else {
+        panic!("{path} is bounded")
+    };
+    assert_eq!(warnings(path, &(max + 1).into()).len(), 1, "{path} above");
+    if min > 0 {
+        assert_eq!(warnings(path, &(min - 1).into()).len(), 1, "{path} below");
     }
 }
 
@@ -138,7 +133,7 @@ fn the_file_is_toml_with_one_key_table_per_row() {
     );
     let first = &table["key"][0];
     assert_eq!(first["page"]["kind"].as_str(), Some("mouse_and_gestures"));
-    assert_eq!(first["kind"]["kind"].as_str(), Some("toggle"));
+    assert_eq!(first["kind"]["kind"].as_str(), Some("menu"));
 }
 
 #[test]

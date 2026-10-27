@@ -3,13 +3,12 @@
 //! Settled behaviour (11.3.9): accumulate centroid deltas until one axis passes the threshold
 //! and dominates by the ratio; lock it and drop the accumulated motion so locking never jumps;
 //! a delta arriving at least the timeout after the previous motion unlocks; two fingers locking
-//! X become `Blocked`, because that motion belongs to the workspace swipe. The reference-feel
-//! goldens compare its decision on every report.
+//! X become `Blocked`, because that motion belongs to the workspace swipe.
 
-use super::curve::CurveParams;
-use super::gain::{HI_RES_PER_DETENT, RepeatGain, raw_per_hi_res, velocity_gain};
+use super::curve::sample_gain;
+use super::gain::{HI_RES_PER_DETENT, raw_per_hi_res};
 use super::lock_event::{Hold, LockEvent, Move, Sample};
-use super::quantize::{Quanta, Quantizer};
+use super::quantize::Quantizer;
 use super::rule::{Lock, LockParams, decide};
 use crate::time::Mono;
 use crate::touch::TouchId;
@@ -22,9 +21,6 @@ pub struct AxisLock {
     last: Vec<Sample>,
     lock: Lock,
     last_motion: Option<Mono>,
-    repeat: RepeatGain,
-    repeat_gain: f64,
-    last_output: Option<Mono>,
     quant: Quantizer,
 }
 
@@ -40,9 +36,6 @@ impl Default for AxisLock {
             last: Vec::new(),
             lock: FREE,
             last_motion: None,
-            repeat: RepeatGain::default(),
-            repeat_gain: 1.0,
-            last_output: None,
             quant: Quantizer::default(),
         }
     }
@@ -59,18 +52,13 @@ impl AxisLock {
         self.set.as_deref()
     }
 
-    /// The repeat gain of the running stroke.
-    pub fn repeat_gain(&self) -> f64 {
-        self.repeat_gain
-    }
-
     /// Drops the lock but keeps following the same contacts: a click or a palm cancelled the
     /// stroke, and the next motion must lock afresh.
     pub fn cancel(self) -> Self {
         self.unlocked()
     }
 
-    /// Forgets the stroke and the repeat history (reconnect).
+    /// Forgets the stroke (reconnect).
     pub fn reset_all(self) -> Self {
         Self::default()
     }
@@ -98,7 +86,7 @@ impl AxisLock {
         let duplicate = ids.windows(2).any(|w| w[0] == w[1]);
         if self.set.as_deref() != Some(&ids[..]) || duplicate {
             return (
-                self.start(ids, contacts, now, p),
+                self.start(ids, contacts, now),
                 vec![LockEvent::Start {
                     fingers: contacts.len() as u8,
                 }],
@@ -141,29 +129,17 @@ impl AxisLock {
             return (self, vec![]);
         }
         let dt = self.last_motion.map_or(0.0, |t| now.float_since(t));
-        let (repeat, velocity) = match p.curve {
-            CurveParams::Classic => (
-                self.repeat_gain,
-                velocity_gain(raw, dt, p.velocity_gain_max),
-            ),
-            CurveParams::MacLike(m) => (1.0, m.sample_gain(raw, dt)),
-        };
-        let rpu = raw_per_hi_res(p.speed, repeat, velocity);
+        let rpu = raw_per_hi_res(p.speed, sample_gain(raw, dt));
         let (quant, q) = self.quant.step(raw, rpu);
-        let quanta = q.quanta;
-        let output = quanta != Quanta::default();
         let s = Self {
             quant,
             last_motion: Some(now),
-            last_output: if output { Some(now) } else { self.last_output },
             ..self
         };
         let m = Move {
             axis,
             raw,
             px: q.exact_units * p.detent_px / f64::from(HI_RES_PER_DETENT),
-            quanta,
-            gain: repeat * velocity,
         };
         (s, vec![LockEvent::Moved(m)])
     }
@@ -203,14 +179,11 @@ impl AxisLock {
         (s, ev)
     }
 
-    fn start(self, ids: Vec<TouchId>, contacts: &[Sample], now: Mono, p: &LockParams) -> Self {
-        let repeat = self.repeat.on_new_stroke(self.last_output, now);
+    fn start(self, ids: Vec<TouchId>, contacts: &[Sample], now: Mono) -> Self {
         Self {
             set: Some(ids),
             last: contacts.to_vec(),
             last_motion: Some(now),
-            repeat,
-            repeat_gain: repeat.gain(p.repeat_gain_max),
             ..self.unlocked()
         }
     }

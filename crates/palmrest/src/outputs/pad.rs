@@ -4,11 +4,18 @@
 //! the contacts must look like a real two-finger scroll and never like anything else: never one
 //! contact (that would move the pointer), both contacts moved by the identical delta (never a
 //! pinch), landing at Began (never at MayBegin, so a resting finger makes nothing), and a short
-//! or tiny stroke held down until `min_down_ms` so libinput's tap timeout (180 ms) has passed.
+//! or tiny stroke held down until `MIN_DOWN` so libinput's tap timeout (180 ms) has passed.
 
-use crate::config::TouchpadSettings;
+use crate::config::{Count, Fraction, Ms};
 use crate::time::Mono;
 use serde::{Deserialize, Serialize};
+
+/// Millimetres moved on the pad per pixel scrolled (0.25).
+const MM_PER_PX: Fraction = Fraction(250);
+/// The gap between the two virtual fingers.
+const CONTACT_SPACING_MM: Count = Count(20);
+/// How long the fingers stay down so apps see a scroll.
+const MIN_DOWN: Ms = Ms(200);
 
 /// Pad units per millimetre (resolution of ABS_MT_POSITION_*).
 pub const UNITS_PER_MM: i32 = 40;
@@ -63,9 +70,9 @@ pub enum Pad {
 
 impl Pad {
     /// A scroll gesture Began: land two contacts (lifting a pending pair first).
-    pub fn land(self, now: Mono, cfg: &TouchpadSettings) -> (Self, Vec<PadFrame>) {
+    pub fn land(self, now: Mono) -> (Self, Vec<PadFrame>) {
         let (_, mut frames) = self.lift_now();
-        let spacing = i32::from(cfg.contact_spacing_mm.0) * UNITS_PER_MM;
+        let spacing = i32::from(CONTACT_SPACING_MM.0) * UNITS_PER_MM;
         frames.push(PadFrame::Land {
             fingers: 2,
             at: CENTRE,
@@ -83,17 +90,11 @@ impl Pad {
     }
 
     /// Moves the pair by a finger-direction px delta.
-    pub fn moved(
-        self,
-        dx_px: f64,
-        dy_px: f64,
-        now: Mono,
-        cfg: &TouchpadSettings,
-    ) -> (Self, Vec<PadFrame>) {
+    pub fn moved(self, dx_px: f64, dy_px: f64, now: Mono) -> (Self, Vec<PadFrame>) {
         let Pad::Down { landed, exact, .. } = self else {
             return (self, vec![]);
         };
-        let scale = cfg.mm_per_px.ratio() * f64::from(UNITS_PER_MM);
+        let scale = MM_PER_PX.ratio() * f64::from(UNITS_PER_MM);
         let exact = (exact.0 + dx_px * scale, exact.1 + dy_px * scale);
         let at = PadPoint {
             x: exact.0.round() as i32,
@@ -102,22 +103,22 @@ impl Pad {
         if !inside(at) {
             // Out of pad: re-land at the centre. The client sees one stroke end and the next begin.
             let (_, mut frames) = Pad::Down { landed, at, exact }.lift_now();
-            let (pad, land) = Pad::Up.land(now, cfg);
+            let (pad, land) = Pad::Up.land(now);
             frames.extend(land);
             return (pad, frames);
         }
         (Pad::Down { landed, at, exact }, vec![PadFrame::Move { at }])
     }
 
-    /// The gesture Ended or was Cancelled: lift now, or at `landed + min_down` if the stroke
+    /// The gesture Ended or was Cancelled: lift now, or at `landed + MIN_DOWN` if the stroke
     /// is younger than that. 12.3.9 also delays strokes that moved under 2 mm, but a stroke
     /// older than `min_down` has outlived the tap timeout whatever it moved, so both of its
     /// conditions reduce to this one.
-    pub fn end(self, now: Mono, cfg: &TouchpadSettings) -> (Self, Vec<PadFrame>) {
+    pub fn end(self, now: Mono) -> (Self, Vec<PadFrame>) {
         let Pad::Down { landed, .. } = self else {
             return (self, vec![]);
         };
-        let hold_until = landed.after(cfg.min_down_ms.duration());
+        let hold_until = landed.after(MIN_DOWN.duration());
         if now < hold_until {
             (Pad::Lifting { at: hold_until }, vec![])
         } else {
@@ -167,13 +168,9 @@ fn inside(p: PadPoint) -> bool {
 mod tests {
     use super::*;
 
-    fn cfg() -> TouchpadSettings {
-        TouchpadSettings::default()
-    }
-
     #[test]
     fn a_stroke_lands_moves_identically_and_lifts() {
-        let (p, f) = Pad::Up.land(Mono(0), &cfg());
+        let (p, f) = Pad::Up.land(Mono(0));
         assert_eq!(
             f,
             [PadFrame::Land {
@@ -182,7 +179,7 @@ mod tests {
                 spacing: 800
             }]
         );
-        let (p, f) = p.moved(0.0, 10.0, Mono::from_millis(100), &cfg());
+        let (p, f) = p.moved(0.0, 10.0, Mono::from_millis(100));
         // 10 px * 0.25 mm/px * 40 units/mm = 100 units.
         assert_eq!(
             f,
@@ -190,15 +187,15 @@ mod tests {
                 at: PadPoint { x: 2000, y: 1500 }
             }]
         );
-        let (p, f) = p.end(Mono::from_millis(250), &cfg());
+        let (p, f) = p.end(Mono::from_millis(250));
         assert_eq!((p, f), (Pad::Up, vec![PadFrame::Lift]));
     }
 
     #[test]
     fn a_short_stroke_holds_its_lift_past_the_tap_timeout() {
-        let (p, _) = Pad::Up.land(Mono(0), &cfg());
-        let (p, _) = p.moved(0.0, 20.0, Mono::from_millis(50), &cfg());
-        let (p, f) = p.end(Mono::from_millis(80), &cfg());
+        let (p, _) = Pad::Up.land(Mono(0));
+        let (p, _) = p.moved(0.0, 20.0, Mono::from_millis(50));
+        let (p, f) = p.end(Mono::from_millis(80));
         assert!(f.is_empty());
         assert_eq!(p.deadline(), Some(Mono::from_millis(200)));
         assert_eq!(p.tick(Mono::from_millis(199)).1, vec![]);
@@ -210,17 +207,17 @@ mod tests {
 
     #[test]
     fn a_new_stroke_lifts_a_pending_one_first() {
-        let (p, _) = Pad::Up.land(Mono(0), &cfg());
-        let (p, _) = p.end(Mono::from_millis(10), &cfg());
-        let (_, f) = p.land(Mono::from_millis(20), &cfg());
+        let (p, _) = Pad::Up.land(Mono(0));
+        let (p, _) = p.end(Mono::from_millis(10));
+        let (_, f) = p.land(Mono::from_millis(20));
         assert_eq!(f[0], PadFrame::Lift);
         assert!(matches!(f[1], PadFrame::Land { .. }));
     }
 
     #[test]
     fn leaving_the_pad_relands_at_the_centre() {
-        let (p, _) = Pad::Up.land(Mono(0), &cfg());
-        let (_, f) = p.moved(0.0, 130.0, Mono::from_millis(300), &cfg());
+        let (p, _) = Pad::Up.land(Mono(0));
+        let (_, f) = p.moved(0.0, 130.0, Mono::from_millis(300));
         assert_eq!(
             f,
             [

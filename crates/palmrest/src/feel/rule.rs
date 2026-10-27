@@ -1,8 +1,7 @@
 //! The axis-lock rule and its parameters (11.3.9, 12.5): which axis a stroke's accumulated
 //! motion locks to, if any.
 
-use super::curve::CurveParams;
-use crate::config::{Config, Um};
+use crate::config::{Config, Fraction, Ms, Px, Um};
 use crate::sensor::lattice::{Along, units};
 use std::time::Duration;
 
@@ -20,6 +19,17 @@ impl Threshold {
     }
 }
 
+/// Accumulated sideways motion before the X axis can lock.
+const LOCK_THRESHOLD_X: Um = Um(1538);
+/// Accumulated up or down motion before the Y axis can lock.
+const LOCK_THRESHOLD_Y: Um = Um(571);
+/// How much further one axis must go than the other to lock (1.5).
+const LOCK_RATIO: Fraction = Fraction(1500);
+/// A delta arriving this long after the previous motion unlocks.
+const LOCK_TIMEOUT: Ms = Ms(250);
+/// Pixels scrolled by one wheel step at the base ratio.
+const DETENT_PX: Px = Px(60);
+
 /// The lock's tunables, resolved from the config into the units the arithmetic uses.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LockParams {
@@ -27,10 +37,7 @@ pub struct LockParams {
     pub ratio: f64,
     pub timeout: Duration,
     pub speed: u16,
-    pub velocity_gain_max: f64,
-    pub repeat_gain_max: f64,
     pub detent_px: f64,
-    pub curve: CurveParams,
 }
 
 /// The lock decision.
@@ -70,19 +77,15 @@ impl LockParams {
     /// The lock's parameters from the config, with the P5 threshold multiplier applied when
     /// the mouse is moving.
     pub fn from_config(c: &Config, threshold_multiplier: f64) -> Self {
-        let s = &c.scroll;
         Self {
             threshold: Threshold {
-                x: scaled(s.lock_threshold_x_um, Along::X, threshold_multiplier),
-                y: scaled(s.lock_threshold_y_um, Along::Y, threshold_multiplier),
+                x: scaled(LOCK_THRESHOLD_X, Along::X, threshold_multiplier),
+                y: scaled(LOCK_THRESHOLD_Y, Along::Y, threshold_multiplier),
             },
-            ratio: s.lock_ratio.ratio(),
-            timeout: s.lock_timeout_ms.duration(),
-            speed: s.speed.0,
-            velocity_gain_max: s.velocity_gain_max.ratio(),
-            repeat_gain_max: s.repeat_gain_max.ratio(),
-            detent_px: f64::from(s.detent_px.0),
-            curve: CurveParams::from_settings(&c.feel),
+            ratio: LOCK_RATIO.ratio(),
+            timeout: LOCK_TIMEOUT.duration(),
+            speed: c.scroll.speed.0,
+            detent_px: f64::from(DETENT_PX.0),
         }
     }
 }
@@ -101,10 +104,7 @@ mod tests {
         ratio: 1.5,
         timeout: Duration::from_millis(250),
         speed: 32,
-        velocity_gain_max: 2.0,
-        repeat_gain_max: 1.0,
         detent_px: 60.0,
-        curve: CurveParams::Classic,
     };
 
     #[test]

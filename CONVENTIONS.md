@@ -153,8 +153,9 @@ remembers.
   return futures.
 - **Timing comes from tokens and timelines**, never from ad-hoc `sleep`s. Animation state is
   driven by `Timeline`/`Presence`, never by a per-component timer.
-- **Proposed values are settings.** Every value the design docs mark "proposed" is read from a
-  settings key (`design/22-SETTINGS.md`) with that default, never hard-coded.
+- **Only choices are settings.** A settings key (`design/22-SETTINGS.md`) is for what the person
+  chooses, as the reference desktop offers it, or a real behaviour choice. A tuning number is a
+  named constant beside the code that uses it, at its default value.
 
 ## 7. Errors and logging
 

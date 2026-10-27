@@ -1,4 +1,4 @@
-//! Recorded-like sessions for the reference-feel comparison: jittered positions and report
+//! Recorded-like sessions for the replay tests: jittered positions and report
 //! intervals from a fixed seed, so they are reproducible.
 
 use super::{Script, finger};

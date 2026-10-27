@@ -1,9 +1,7 @@
 //! `palmrest replay`: a recording through the pure core, exactly as the reader thread drives it.
 //!
-//! The acceptance tests and the reference-feel comparison run through here, so what they check
-//! is the daemon's own path from bytes to outputs, not a test-only shortcut.
-
-pub mod compare;
+//! The acceptance tests run through here, so what they check is the daemon's own path from
+//! bytes to outputs, not a test-only shortcut.
 
 use crate::config::Config;
 use crate::feel::Lock;
@@ -16,7 +14,7 @@ use crate::tracker::{Out, Tracker};
 /// Where event times come from during a replay.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Timing {
-    /// The recorded arrival times, as-is (fixtures, reference feel).
+    /// The recorded arrival times, as-is (fixtures).
     Arrival,
     /// Through the timestamp calibration, as the live daemon does.
     Calibrated,
@@ -27,7 +25,7 @@ pub enum Timing {
 pub struct Step {
     pub at: Mono,
     pub outs: Vec<Out>,
-    /// The scroll lock decision after this record (the reference-feel suite compares it).
+    /// The scroll lock decision after this record.
     pub lock: Lock,
     pub error: Option<SensorError>,
 }
@@ -36,8 +34,7 @@ pub struct Step {
 ///
 /// Between records the tracker is ticked at its deadlines, as the reader thread's poll timeout
 /// does, and after the last record until it has none left; each tick that produced outputs is a
-/// `Step` of its own at the deadline. A delayed touchpad lift and a synthesized glide therefore
-/// replay frame by frame. A step per record is kept for records; ticks only add steps.
+/// `Step` of its own at the deadline. A delayed touchpad lift therefore replays at its own time. A step per record is kept for records; ticks only add steps.
 pub fn replay(records: &[Record], cfg: Config, timing: Timing) -> Vec<Step> {
     replay_to_end(records, cfg, timing).1
 }
@@ -71,7 +68,7 @@ pub fn replay_from(
     (tracker, steps)
 }
 
-/// The most ticks one gap may take; a glide at 1 ms frames lasts a few thousand.
+/// The most ticks one gap may take; a long gap of delayed lifts stays well under it.
 const MAX_TICKS: usize = 100_000;
 
 /// Ticks `tracker` at every deadline before `until` (all of them if `None`).

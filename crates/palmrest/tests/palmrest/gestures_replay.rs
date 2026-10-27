@@ -3,9 +3,8 @@
 //! suppression.
 
 use palmrest::action::Deferred;
-use palmrest::config::{Config, Rejection};
+use palmrest::config::Config;
 use palmrest::keys::{Key, KeyCombo};
-use palmrest::recording::Record;
 use palmrest::replay::{Timing, feed, outs, replay};
 use palmrest::stamp::StampClock;
 use palmrest::{Out, Tracker};
@@ -223,30 +222,10 @@ fn a_locked_session_runs_no_gesture_effect() {
 // ---- 7. Rejection -------------------------------------------------------------------------
 
 #[test]
-fn a_resting_side_contact_is_ignored_only_with_rejection_on() {
-    let records: Vec<Record> = crate::support::load("rest_side_band");
-    let on = outs(&replay(&records, Config::default(), Timing::Arrival));
-    let off = outs(&replay(
-        &records,
-        Config {
-            rejection: Rejection::Off,
-            ..Config::default()
-        },
-        Timing::Arrival,
-    ));
-    let fingers = |o: &[Out]| crate::support::scrolls(o).iter().map(|s| s.1).max();
-    assert_eq!(fingers(&on), Some(1));
-    assert_eq!(fingers(&off), Some(2));
-    // One finger scrolls the whole stroke; two fingers' centroid moves half as far, and
-    // locks later.
-    let (on_y, off_y) = (
-        crate::support::scrolled(&on).1,
-        crate::support::scrolled(&off).1,
-    );
-    assert!(
-        on_y > 1.5 * off_y && off_y > 0.0,
-        "on {on_y} px, off {off_y} px"
-    );
+fn a_resting_side_contact_is_ignored() {
+    let all = run("rest_side_band");
+    let fingers = crate::support::scrolls(&all).iter().map(|s| s.1).max();
+    assert_eq!(fingers, Some(1), "only the moving finger counts");
 }
 
 #[test]
@@ -286,19 +265,6 @@ fn a_moving_mouse_needs_twice_the_travel_to_scroll() {
         crate::support::scrolls(&run("mouse_moving"))
             .iter()
             .all(|s| s.0 != Phase::Began)
-    );
-    let off = outs(&replay(
-        &crate::support::load("mouse_moving"),
-        Config {
-            rejection: Rejection::Off,
-            ..Config::default()
-        },
-        Timing::Arrival,
-    ));
-    assert!(
-        crate::support::scrolls(&off)
-            .iter()
-            .any(|s| s.0 == Phase::Began)
     );
 }
 
@@ -353,7 +319,6 @@ fn touches_down_and_up_alternate() {
 
 #[test]
 fn a_claimed_pointer_silences_every_foreign_output() {
-    use palmrest::config::ForeignOutput;
     for name in ["g4_fast", "feel_fast", "click_during_scroll"] {
         let free = run(name);
         assert!(
@@ -364,7 +329,7 @@ fn a_claimed_pointer_silences_every_foreign_output() {
         assert!(
             !claimed
                 .iter()
-                .any(|o| matches!(o, Out::Pad(_) | Out::Wheel(_) | Out::Key(_))),
+                .any(|o| matches!(o, Out::Pad(_) | Out::Key(_))),
             "{name}"
         );
         assert_eq!(
@@ -373,28 +338,29 @@ fn a_claimed_pointer_silences_every_foreign_output() {
             "{name}: the socket stream is unchanged"
         );
     }
-    // The wheel output is silenced the same way.
-    let wheel = Config {
-        foreign_output: ForeignOutput::Wheel,
-        ..Config::default()
-    };
-    let (mut t, _) = Tracker::new(wheel.clone()).claim(Over::Ours);
-    let mut all = Vec::new();
-    for r in &crate::support::load("feel_fast") {
-        let (nt, _, step) = feed(t, StampClock::new(), r, Timing::Arrival);
-        t = nt;
-        all.extend(step.outs);
-    }
-    assert!(!all.iter().any(|o| matches!(o, Out::Wheel(_))));
-    assert!(
-        outs(&replay(
-            &crate::support::load("feel_fast"),
-            wheel,
-            Timing::Arrival
-        ))
+}
+
+#[test]
+fn the_pad_lifts_once_when_the_scroll_ends_and_the_app_runs_the_glide() {
+    let all = run("flick_two_vertical");
+    let ended = all
         .iter()
-        .any(|o| matches!(o, Out::Wheel(_)))
-    );
+        .rposition(|o| {
+            matches!(
+                o,
+                Out::Host(ToHost::Scroll {
+                    phase: Phase::Ended,
+                    axis: Some(_),
+                    ..
+                })
+            )
+        })
+        .expect("a locked scroll ends");
+    let pad: Vec<&Out> = all[ended..]
+        .iter()
+        .filter(|o| matches!(o, Out::Pad(_)))
+        .collect();
+    assert_eq!(pad, [&Out::Pad(palmrest::outputs::pad::PadFrame::Lift)]);
 }
 
 #[test]

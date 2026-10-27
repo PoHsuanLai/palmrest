@@ -4,7 +4,7 @@
 # A system service, as keycap is: the mouse's raw reports are read by the service and not by the
 # person's own programs, and the control group `/system.slice/palmrest.service` is one only the
 # system manager can fill, which is how the input service (turnstile) knows it is the genuine
-# palmrest before it makes a touchpad, a wheel and a keyboard for it.
+# palmrest before it makes a touchpad and a keyboard for it.
 #
 # What it reaches. The mouse's hidraw node comes through the `input` group (dist/70-palmrest.rules
 # gives the node that group), and the virtual devices come from turnstile, so this unit has no
@@ -70,8 +70,8 @@ RestrictSUIDSGID=yes
 SystemCallArchitectures=native
 SystemCallFilter=@system-service
 DevicePolicy=closed
-# The mouse's raw node (read, and the one feature report that turns multitouch on) and, for
-# device.source = "evdev", the input nodes; both are read only through the `input` group.
+# The mouse's raw node (read, and the one feature report that turns multitouch on) and the
+# input nodes; both are read only through the `input` group.
 DeviceAllow=char-hidraw rw
 DeviceAllow=char-input r
 

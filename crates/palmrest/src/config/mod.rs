@@ -1,6 +1,5 @@
-//! `palmrest/gestures.toml`: every tunable value, its default, and live reload.
+//! `palmrest/gestures.toml`: the settings a person chooses, their defaults, and live reload.
 
-pub mod enums;
 pub mod file;
 pub mod layer;
 pub mod lenient;
@@ -10,17 +9,10 @@ pub mod sections;
 pub mod units;
 pub mod watch;
 
-pub use enums::{
-    ContactNibblePolicy, Curve, DeviceSource, ForeignMomentum, ForeignOutput, G4Mode, Rejection,
-    SwipeRepeat,
-};
 pub use file::{Config, ParseError, parse, parse_table, to_toml};
 pub use layer::layered;
 pub use lenient::Warning;
 pub use load::{Loaded, config_dir, first_directory, load};
 pub use schema::{FILE_NAME as SCHEMA_FILE_NAME, Schema};
-pub use sections::{
-    DeviceSettings, FeelSettings, GestureSettings, MomentumSettings, PalmRejectionSettings,
-    ScrollSettings, SwipeSettings, TapSettings, TouchpadSettings,
-};
+pub use sections::{GestureSettings, ScrollSettings};
 pub use units::{Count, Fraction, Ms, Percent, Px, Um, Units};

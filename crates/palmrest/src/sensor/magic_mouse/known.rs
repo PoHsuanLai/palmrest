@@ -104,8 +104,8 @@ pub const KNOWN: &[KnownDevice] = &[
     },
     // TODO(untested): the Magic Mouse 1 sends report 0x29, whose header and 6-byte touch
     // blocks differ from report 0x12, and `decode` has no reader for it. It is listed so the
-    // daemon can say so and point at `[device] source = "evdev"`, where the kernel driver
-    // decodes it; neither path has run against one.
+    // daemon can say so; the kernel driver decodes it through evdev, which the daemon does not
+    // read; neither path has run against one.
     KnownDevice {
         bus: Bus::Bluetooth,
         vendor: USB_VENDOR,

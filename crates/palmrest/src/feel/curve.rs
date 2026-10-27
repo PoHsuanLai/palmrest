@@ -1,87 +1,52 @@
-//! The acceleration curve: which gain turns a sample's raw units into px (`feel.curve`).
+//! The acceleration curve: the gain that turns a sample's raw units into px.
 //!
-//! `Classic` is a pair of gains (velocity x repeat), computed by `gain.rs` and pinned by the
-//! reference-feel goldens. `MacLike` replaces both with one function of finger speed, shaped
-//! after the published description of the reference desktop's scroll acceleration: slow motion is
-//! precise (gain exactly 1, the base ratio of `scroll.speed` and `scroll.detent_px`), faster
-//! motion gains progressively, and the gain is capped. The shape is our own power law, fitted
-//! to that description, not to any vendor table:
+//! One function of finger speed, shaped after the published description of the reference
+//! desktop's scroll acceleration: slow motion is precise (gain exactly 1, the base ratio of
+//! `scroll.speed` and the wheel step), faster motion gains progressively, and the gain is capped.
+//! The shape is our own power law, fitted to that description, not to any vendor table:
 //!
 //! ```text
 //! g(v) = 1                                        v <= v0
 //! g(v) = min(g_max, 1 + ((v - v0) / s)^p)         v >  v0
 //! ```
 //!
-//! `v` is the sample's speed in raw units per second (the same estimator as the velocity gain:
-//! `|raw| / dt` for `0 < dt <= 50 ms`, else 0). With `p > 1` the curve is continuous with a
-//! continuous slope at `v0`, and monotone everywhere.
+//! `v` is the sample's speed in raw units per second (`|raw| / dt` for `0 < dt <= 50 ms`, else
+//! 0). With `p > 1` the curve is continuous with a continuous slope at `v0`, and monotone
+//! everywhere.
+//!
+//! Speeds are grid units per second of one sample (26/mm across, 70/mm along: the Magic Mouse
+//! 2's raw units). They shape the transfer function rather than recognise a gesture, and apply
+//! to whichever axis locked, so they stay in grid units rather than becoming x/y millimetres.
 
 use super::gain::VELOCITY_DT_MAX;
-use crate::config::{Curve, FeelSettings};
+use crate::config::{Count, Fraction};
 
-/// The `MacLike` constants, resolved from `[feel]`.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct MacLike {
-    /// `v0`: below this speed the gain is 1.
-    pub threshold: f64,
-    /// `s`: the speed above `v0` that adds 1.0 to the gain.
-    pub scale: f64,
-    /// `p`.
-    pub exponent: f64,
-    /// `g_max`.
-    pub gain_max: f64,
+/// `v0`: below this speed the gain is 1.
+const PRECISE_BELOW: Count = Count(1500);
+/// `s`: the speed above `v0` that adds 1.0 to the gain.
+const RAMP: Count = Count(3000);
+/// `p`.
+const EXPONENT: Fraction = Fraction(1600);
+/// `g_max`.
+const GAIN_MAX: Fraction = Fraction(6000);
+
+/// The gain at `speed` raw units per second.
+pub fn gain(speed: f64) -> f64 {
+    let over = (speed - f64::from(PRECISE_BELOW.0)).max(0.0) / f64::from(RAMP.0);
+    (1.0 + over.powf(EXPONENT.ratio())).min(GAIN_MAX.ratio())
 }
 
-/// The curve in force, with its constants.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CurveParams {
-    Classic,
-    MacLike(MacLike),
-}
-
-impl CurveParams {
-    pub fn from_settings(f: &FeelSettings) -> Self {
-        match f.curve {
-            Curve::Classic => Self::Classic,
-            Curve::MacLike => Self::MacLike(MacLike {
-                threshold: f64::from(f.mac_like_threshold_units_s.0),
-                scale: f64::from(f.mac_like_scale_units_s.0.max(1)),
-                exponent: f.mac_like_exponent.ratio(),
-                gain_max: f.mac_like_gain_max.ratio().max(1.0),
-            }),
-        }
+/// The gain of one sample of `raw` units `dt` seconds after the previous motion.
+pub fn sample_gain(raw: i32, dt: f64) -> f64 {
+    if dt <= 0.0 || dt > VELOCITY_DT_MAX {
+        return 1.0;
     }
-}
-
-impl MacLike {
-    /// The gain at `speed` raw units per second.
-    pub fn gain(&self, speed: f64) -> f64 {
-        let over = (speed - self.threshold).max(0.0) / self.scale;
-        (1.0 + over.powf(self.exponent)).min(self.gain_max)
-    }
-
-    /// The gain of one sample of `raw` units `dt` seconds after the previous motion.
-    pub fn sample_gain(&self, raw: i32, dt: f64) -> f64 {
-        if dt <= 0.0 || dt > VELOCITY_DT_MAX {
-            return 1.0;
-        }
-        self.gain(f64::from(raw.unsigned_abs()) / dt)
-    }
+    gain(f64::from(raw.unsigned_abs()) / dt)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::Config;
-
-    fn shipped() -> MacLike {
-        let mut f = Config::default().feel;
-        f.curve = Curve::MacLike;
-        match CurveParams::from_settings(&f) {
-            CurveParams::MacLike(m) => m,
-            CurveParams::Classic => unreachable!("curve was set to MacLike"),
-        }
-    }
 
     #[test]
     fn the_shipped_shape() {
@@ -100,32 +65,26 @@ mod tests {
             (10_000.0, 6.0),
             (30_000.0, 6.0),
         ];
-        let m = shipped();
         for &(v, want) in CASES {
-            assert!((m.gain(v) - want).abs() < 1e-5, "{v}: {}", m.gain(v));
+            assert!((gain(v) - want).abs() < 1e-5, "{v}: {}", gain(v));
         }
     }
 
     #[test]
     fn monotone_and_continuous() {
-        let m = shipped();
-        let gains: Vec<f64> = (0..=20_000).map(|v| m.gain(f64::from(v))).collect();
+        let gains: Vec<f64> = (0..=20_000).map(|v| gain(f64::from(v))).collect();
         for w in gains.windows(2) {
             assert!(w[1] >= w[0], "monotone: {w:?}");
             assert!(w[1] - w[0] < 0.01, "continuous at 1 unit/s steps: {w:?}");
         }
         // The slope at v0 is continuous too (p > 1): the first step above v0 is tiny.
-        assert!(m.gain(1501.0) - 1.0 < 1e-5);
+        assert!(gain(1501.0) - 1.0 < 1e-5);
     }
 
     #[test]
-    fn a_sample_uses_the_velocity_gains_speed_estimate() {
-        let m = shipped();
-        assert_eq!(m.sample_gain(60, 0.0), 1.0, "no time: no gain");
-        assert_eq!(m.sample_gain(600, 0.06), 1.0, "a pause: no gain");
-        assert!(
-            (m.sample_gain(-54, 0.012) - 2.0).abs() < 1e-9,
-            "4500 units/s"
-        );
+    fn a_sample_uses_the_speed_estimate_of_a_short_gap() {
+        assert_eq!(sample_gain(60, 0.0), 1.0, "no time: no gain");
+        assert_eq!(sample_gain(600, 0.06), 1.0, "a pause: no gain");
+        assert!((sample_gain(-54, 0.012) - 2.0).abs() < 1e-9, "4500 units/s");
     }
 }

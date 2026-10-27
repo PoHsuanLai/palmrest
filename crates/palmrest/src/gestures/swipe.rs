@@ -1,17 +1,24 @@
 //! G5: two-finger horizontal travel switches workspaces, as a value.
 //!
 //! Travel is the pair's centroid from where it landed, on the grid. Vertical travel that
-//! dominates past `vertical_max_um` re-anchors (the pair is scrolling; "dominates" compares grid
-//! units, as it always did); `threshold_um` of horizontal travel fires once
+//! dominates past `VERTICAL_MAX` re-anchors (the pair is scrolling; "dominates" compares grid
+//! units, as it always did); `THRESHOLD` of horizontal travel fires once
 //! in the direction the fingers moved and re-anchors, so a long drag keeps going after the
 //! cooldown. The same pair also feeds the host a raw `Swipe` stream.
 
-use crate::config::{Config, SwipeRepeat};
+use crate::config::{Ms, Um};
 use crate::feel::{Hold, Sample};
 use crate::sensor::lattice::{Along, units};
 use crate::time::Mono;
 use crate::touch::TouchId;
 use palmrest_protocol::{GestureId, Phase};
+
+/// Horizontal travel that fires.
+const THRESHOLD: Um = Um(7692);
+/// Vertical travel past which a pair counts as scrolling.
+const VERTICAL_MAX: Um = Um(2143);
+/// The next swipe counts only this long after the last fired.
+const COOLDOWN: Ms = Ms(500);
 
 /// Which way the fingers moved.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,13 +34,6 @@ struct Pair {
     travel_x: i32,
     travel_y: i32,
     gesture: GestureId,
-    fired: Fired,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Fired {
-    Not,
-    Once,
 }
 
 /// The swipe between reports.
@@ -69,18 +69,12 @@ pub enum SwipeEvent {
 
 impl SwipeG {
     /// Consumes one report's contacts.
-    pub fn step(
-        self,
-        contacts: &[Sample],
-        now: Mono,
-        cfg: &Config,
-        hold: Hold,
-    ) -> (Self, Vec<SwipeEvent>) {
+    pub fn step(self, contacts: &[Sample], now: Mono, hold: Hold) -> (Self, Vec<SwipeEvent>) {
         let [a, b] = contacts else { return self.end() };
         let mut ids = [a.id, b.id];
         ids.sort();
         match self.pair.clone() {
-            Some(p) if p.ids == ids && a.id != b.id => self.advance(p, [*a, *b], now, cfg, hold),
+            Some(p) if p.ids == ids && a.id != b.id => self.advance(p, [*a, *b], now, hold),
             _ => {
                 let (s, mut ev) = self.end();
                 let gesture = GestureId(s.next_id);
@@ -95,7 +89,6 @@ impl SwipeG {
                     travel_x: 0,
                     travel_y: 0,
                     gesture,
-                    fired: Fired::Not,
                 };
                 (
                     Self {
@@ -128,7 +121,6 @@ impl SwipeG {
         p: Pair,
         now_at: [Sample; 2],
         now: Mono,
-        cfg: &Config,
         hold: Hold,
     ) -> (Self, Vec<SwipeEvent>) {
         let (sx, sy) = now_at.iter().fold((0, 0), |(sx, sy), c| {
@@ -151,9 +143,8 @@ impl SwipeG {
             travel_y: p.travel_y + dy,
             ..p
         };
-        let s = &cfg.swipe;
-        let vertical_max = units(s.vertical_max_um, Along::Y);
-        let threshold = units(s.threshold_um, Along::X);
+        let vertical_max = units(VERTICAL_MAX, Along::Y);
+        let threshold = units(THRESHOLD, Along::X);
         let anchor = |p: Pair| Pair {
             travel_x: 0,
             travel_y: 0,
@@ -173,17 +164,10 @@ impl SwipeG {
             };
             let cooled = self
                 .last_fire
-                .is_none_or(|t| now.since(t) >= s.cooldown_ms.duration());
-            let allowed = !(s.repeat == SwipeRepeat::OncePerGesture && p.fired == Fired::Once);
-            if cooled && allowed {
+                .is_none_or(|t| now.since(t) >= COOLDOWN.duration());
+            if cooled {
                 ev.push(SwipeEvent::Fire(dir));
-                (
-                    Pair {
-                        fired: Fired::Once,
-                        ..anchor(p)
-                    },
-                    Some(now),
-                )
+                (anchor(p), Some(now))
             } else {
                 (anchor(p), self.last_fire)
             }

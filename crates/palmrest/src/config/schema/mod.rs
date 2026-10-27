@@ -21,12 +21,12 @@ const FILE: &str = "palmrest/gestures.toml";
 /// The schema file format's version (quire design/22 section 9.2).
 const VERSION: u16 = 1;
 
-/// Whether the Settings app draws a key on its page or under its "Advanced" disclosure.
+/// Whether the Settings app draws a key on its page or under its "Advanced" disclosure; every
+/// palmrest key is on the page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(super) enum Exposure {
     Basic,
-    Advanced,
 }
 
 /// A key's shape: what values it holds. Serialises as quire's `KeyKind`.

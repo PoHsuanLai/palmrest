@@ -40,15 +40,9 @@ fn theirs(text: &str) -> Result<Table, String> {
     })
 }
 
-/// Takes out what a person may not set: the sensor (`[device]` is the machine's to choose), and a
-/// gesture's program or shell line that is longer than the bounds of a request to the shell.
+/// Takes out what a person may not set: a gesture's program or shell line that is longer than
+/// the bounds of a request to the shell.
 fn confine(theirs: &mut Table, warnings: &mut Vec<Warning>) {
-    if theirs.remove("device").is_some() {
-        warnings.push(Warning::partly_unusable(
-            "device",
-            "is the machine's to choose; your value is ignored",
-        ));
-    }
     let Some(Value::Table(gestures)) = theirs.get_mut("gestures") else {
         return;
     };
@@ -105,16 +99,21 @@ fn merge(ours: &mut Table, theirs: Table) {
 mod tests {
     use super::*;
     use crate::action::Action;
-    use crate::config::units::{Count, Ms};
+    use crate::config::units::Count;
 
-    const MACHINE: &str = "[scroll]\nspeed = 30\n[swipe]\ncooldown_ms = 300\n";
+    const MACHINE: &str =
+        "[scroll]\nspeed = 30\n[gestures.gesture_action_map]\none_finger_swipe_left = \"none\"\n";
 
     #[test]
     fn the_persons_keys_win_and_the_machines_stand_where_they_say_nothing() {
         let (c, warn) = layered(MACHINE, Some("[scroll]\nspeed = 40\n"));
         assert!(warn.is_empty(), "{warn:?}");
         assert_eq!(c.scroll.speed, Count(40));
-        assert_eq!(c.swipe.cooldown_ms, Ms(300), "untouched section");
+        assert_eq!(
+            c.gestures.gesture_action_map.one_finger_swipe_left,
+            Action::None,
+            "untouched section"
+        );
         let (c, _) = layered(MACHINE, None);
         assert_eq!(c.scroll.speed, Count(30));
         let (c, _) = layered(MACHINE, Some("  \n"));
@@ -127,12 +126,11 @@ mod tests {
     fn what_a_person_may_not_set_is_dropped_with_a_warning() {
         let words = "w".repeat(ACTION_WORD_MAX_BYTES + 1);
         let user = format!(
-            "[device]\nsource = \"evdev\"\n[gestures.gesture_action_map]\n\
+            "[gestures.gesture_action_map]\n\
              one_finger_double_tap = {{ kind = \"command\", v = [\"{words}\"] }}\n\
              two_finger_swipe_left = {{ kind = \"command\", v = [\"notify-send\", \"hi\"] }}\n"
         );
         let (c, warn) = layered(MACHINE, Some(&user));
-        assert_eq!(c.device, Config::default().device);
         assert_eq!(
             c.gestures.gesture_action_map.one_finger_double_tap,
             Action::SmartZoom,
@@ -143,13 +141,7 @@ mod tests {
             Action::Command(vec!["notify-send".into(), "hi".into()])
         );
         let keys: Vec<&str> = warn.iter().map(|w| w.key.as_str()).collect();
-        assert_eq!(
-            keys,
-            [
-                "device",
-                "gestures.gesture_action_map.one_finger_double_tap"
-            ]
-        );
+        assert_eq!(keys, ["gestures.gesture_action_map.one_finger_double_tap"]);
     }
 
     #[test]

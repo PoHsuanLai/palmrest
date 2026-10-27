@@ -1,7 +1,6 @@
 //! What the axis lock reads and reports: the contacts it follows, the click hold, and the
 //! events one report produces.
 
-use super::quantize::Quanta;
 use super::rule::Lock;
 use crate::touch::{Point, TouchId};
 use palmrest_protocol::Axis;
@@ -25,12 +24,8 @@ pub enum Hold {
 pub struct Move {
     pub axis: Axis,
     pub raw: i32,
-    /// Px in finger direction, all gains applied: the wheel stream before truncation.
+    /// Px in finger direction, the acceleration applied.
     pub px: f64,
-    /// The wheel device's share of this sample.
-    pub quanta: Quanta,
-    /// The gain over the base ratio this sample was scrolled with.
-    pub gain: f64,
 }
 
 /// What one report did to the lock, in order.

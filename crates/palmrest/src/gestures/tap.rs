@@ -1,17 +1,26 @@
 //! G6/G7: one- and two-finger double-taps (12.4 "Tap").
 //!
 //! A tap is a touchdown whose peak contact count is 1 or 2, that lifts completely within
-//! `tap.max_ms`, in which no contact moves out of the `tap.max_move_*_um` ellipse, with no
-//! click. A double-tap is a second tap of the same count landing within `tap.gap_ms` of the
-//! first lifting and inside the `tap.centroid_max_*_um` ellipse around where it was. Taps never scroll: their motion stays under the
+//! `MAX`, in which no contact moves out of the `MAX_MOVE` ellipse, with no click. A double-tap
+//! is a second tap of the same count landing within `GAP` of the first lifting and inside the
+//! `CENTROID_MAX` ellipse around where it was. Taps never scroll: their motion stays under the
 //! lock threshold.
 
-use crate::config::Config;
+use crate::config::{Ms, Um};
 use crate::feel::{Hold, Sample};
 use crate::sensor::lattice::Ellipse;
 use crate::time::Mono;
 use crate::touch::Point;
 use palmrest_protocol::TapKind;
+
+/// The longest touch that still counts as a tap.
+const MAX: Ms = Ms(200);
+/// The longest pause between a double-tap's taps.
+const GAP: Ms = Ms(350);
+/// No contact of a tap moves this far from where it landed (an ellipse: sideways, lengthways).
+const MAX_MOVE: (Um, Um) = (Um(1538), Um(571));
+/// The second tap lands this close to the first (an ellipse: sideways, lengthways).
+const CENTROID_MAX: (Um, Um) = (Um(11538), Um(4286));
 
 /// Whether a touchdown can still be a tap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,25 +69,19 @@ pub enum TapG {
 
 impl TapG {
     /// Consumes one report's contacts; returns a double-tap when one completes.
-    pub fn step(
-        self,
-        contacts: &[Sample],
-        now: Mono,
-        cfg: &Config,
-        hold: Hold,
-    ) -> (Self, Option<TapKind>) {
+    pub fn step(self, contacts: &[Sample], now: Mono, hold: Hold) -> (Self, Option<TapKind>) {
         match (self, contacts.is_empty()) {
-            (Self::Down { first, td }, true) => lift(first, td, now, cfg),
+            (Self::Down { first, td }, true) => lift(first, td, now),
             (Self::Down { first, td }, false) => (
                 Self::Down {
                     first,
-                    td: td.update(contacts, now, cfg, hold),
+                    td: td.update(contacts, now, hold),
                 },
                 None,
             ),
             (Self::Gap(g), false) => (
                 Self::Down {
-                    first: live(g, now, cfg),
+                    first: live(g, now),
                     td: Touchdown::land(contacts, now, hold),
                 },
                 None,
@@ -90,24 +93,24 @@ impl TapG {
                 },
                 None,
             ),
-            (Self::Gap(g), true) => (live(g, now, cfg).map_or(Self::Idle, Self::Gap), None),
+            (Self::Gap(g), true) => (live(g, now).map_or(Self::Idle, Self::Gap), None),
             (Self::Idle, true) => (Self::Idle, None),
         }
     }
 }
 
-fn live(g: Gap, now: Mono, cfg: &Config) -> Option<Gap> {
-    (now.since(g.lifted) <= cfg.tap.gap_ms.duration()).then_some(g)
+fn live(g: Gap, now: Mono) -> Option<Gap> {
+    (now.since(g.lifted) <= GAP.duration()).then_some(g)
 }
 
-fn lift(first: Option<Gap>, td: Touchdown, now: Mono, cfg: &Config) -> (TapG, Option<TapKind>) {
-    if !td.is_tap(now, cfg) {
+fn lift(first: Option<Gap>, td: Touchdown, now: Mono) -> (TapG, Option<TapKind>) {
+    if !td.is_tap(now) {
         return (TapG::Idle, None);
     }
     let second = first.filter(|g| {
         g.fingers == td.peak
-            && td.since.since(g.lifted) <= cfg.tap.gap_ms.duration()
-            && Ellipse::of(cfg.tap.centroid_max_x_um, cfg.tap.centroid_max_y_um)
+            && td.since.since(g.lifted) <= GAP.duration()
+            && Ellipse::of(CENTROID_MAX.0, CENTROID_MAX.1)
                 .contains(td.centroid.delta_from(g.origin))
     });
     match (second, td.peak) {
@@ -141,7 +144,7 @@ impl Touchdown {
         }
     }
 
-    fn update(mut self, contacts: &[Sample], now: Mono, cfg: &Config, hold: Hold) -> Self {
+    fn update(mut self, contacts: &[Sample], now: Mono, hold: Hold) -> Self {
         let n = contacts.len();
         let regrew = self.shrunk == Shrunk::Yes && n > self.count;
         if n < self.count {
@@ -157,7 +160,7 @@ impl Touchdown {
             self.centroid = centroid(contacts);
         }
         self.count = n;
-        let max_move = Ellipse::of(cfg.tap.max_move_x_um, cfg.tap.max_move_y_um);
+        let max_move = Ellipse::of(MAX_MOVE.0, MAX_MOVE.1);
         let moved = contacts.iter().any(|c| {
             let o = self
                 .origins
@@ -166,17 +169,17 @@ impl Touchdown {
                 .map_or(c.at, |o| o.at);
             max_move.reached(c.at.delta_from(o))
         });
-        let late = now.since(self.since) > cfg.tap.max_ms.duration();
+        let late = now.since(self.since) > MAX.duration();
         if moved || late || regrew || hold == Hold::Held || self.peak > 2 {
             self.validity = Validity::Void;
         }
         self
     }
 
-    fn is_tap(&self, lift: Mono, cfg: &Config) -> bool {
+    fn is_tap(&self, lift: Mono) -> bool {
         self.validity == Validity::Valid
             && (1..=2).contains(&self.peak)
-            && lift.since(self.since) <= cfg.tap.max_ms.duration()
+            && lift.since(self.since) <= MAX.duration()
     }
 }
 
@@ -204,7 +207,6 @@ mod tests {
 
     /// Two taps of `n` fingers, `down` ms each, `gap` ms apart, the second shifted by `shift`.
     fn double(n: u8, down: u64, gap: u64, shift: i32) -> Vec<Option<TapKind>> {
-        let cfg = Config::default();
         let frames = [
             (0, fingers(n, 0)),
             (down, vec![]),
@@ -215,7 +217,7 @@ mod tests {
         frames
             .iter()
             .map(|(ms, c)| {
-                let (n, k) = t.clone().step(c, Mono::from_millis(*ms), &cfg, Hold::Open);
+                let (n, k) = t.clone().step(c, Mono::from_millis(*ms), Hold::Open);
                 t = n;
                 k
             })
@@ -243,7 +245,6 @@ mod tests {
 
     #[test]
     fn staggered_landing_uses_the_peak_centroid() {
-        let cfg = Config::default();
         let one = fingers(1, 0);
         let two = fingers(2, 0);
         let frames = [
@@ -257,7 +258,7 @@ mod tests {
         let got: Vec<_> = frames
             .iter()
             .scan(TapG::Idle, |t, (ms, c)| {
-                let (n, k) = t.clone().step(c, Mono::from_millis(*ms), &cfg, Hold::Open);
+                let (n, k) = t.clone().step(c, Mono::from_millis(*ms), Hold::Open);
                 *t = n;
                 Some(k)
             })

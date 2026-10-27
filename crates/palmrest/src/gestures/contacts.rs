@@ -5,12 +5,11 @@
 mod rejection;
 
 use super::bands::Bands;
-use crate::config::{Config, ContactNibblePolicy};
 use crate::feel::Sample;
 use crate::sensor::lattice;
 use crate::sensor::{FrameContact, Shape};
 use crate::time::Mono;
-use crate::touch::{TouchId, TouchState};
+use crate::touch::TouchId;
 pub use rejection::Contact;
 use rejection::{Touch, Track, advance, land};
 
@@ -35,15 +34,10 @@ pub struct Seen {
     pub palm: PalmTurn,
 }
 
-/// Whether the frame's state makes this touch a contact at all (12.3.2): the state nibble, and
-/// on the Magic Mouse a non-zero size.
-pub fn is_contact(t: &FrameContact, policy: ContactNibblePolicy) -> bool {
-    let counted = match policy {
-        ContactNibblePolicy::OneToFour => (1..=4).contains(&t.state.nibble()),
-        ContactNibblePolicy::KernelOnly => {
-            matches!(t.state, TouchState::MakeTouch | TouchState::Touching)
-        }
-    };
+/// Whether the frame's state makes this touch a contact at all (12.3.2): a state nibble from
+/// 1 to 4 (in range, making touch or touching), and on the Magic Mouse a non-zero size.
+pub fn is_contact(t: &FrameContact) -> bool {
+    let counted = (1..=4).contains(&t.state.nibble());
     let sized = match t.shape {
         Shape::MagicMouse(m) => m.size > 0,
         Shape::Unmeasured => true,
@@ -58,16 +52,10 @@ impl Contacts {
     }
 
     /// Consumes one frame's contacts, with the bands of the surface they are on.
-    pub fn step(
-        self,
-        touches: &[FrameContact],
-        now: Mono,
-        cfg: &Config,
-        bands: &Bands,
-    ) -> (Self, Seen) {
+    pub fn step(self, touches: &[FrameContact], now: Mono, bands: &Bands) -> (Self, Seen) {
         let live: Vec<Touch> = touches
             .iter()
-            .filter(|t| is_contact(t, cfg.gestures.contact_nibble_policy))
+            .filter(|t| is_contact(t))
             .map(|t| Touch {
                 id: t.id,
                 at: lattice::point(t.at),
@@ -77,8 +65,8 @@ impl Contacts {
         let tracks: Vec<Track> = live
             .iter()
             .map(|t| match self.tracks.iter().find(|k| k.id == t.id) {
-                Some(k) => advance(*k, t, now, cfg),
-                None => land(t, now, cfg, bands),
+                Some(k) => advance(*k, t, now),
+                None => land(t, now, bands),
             })
             .collect();
         let counted = |k: &Track| match k.class {

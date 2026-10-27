@@ -21,12 +21,10 @@ use std::time::Duration;
 const USAGE: &str = "usage:
   palmrest [--direct-uinput]       run the daemon (--direct-uinput: make the virtual devices
                                    without the input service, for development)
-  palmrest record FILE [SECONDS]   record raw reads of the configured device.source
+  palmrest record FILE [SECONDS]   record raw reads of the Magic Mouse
                                    (stops after 20 s of no touch)
   palmrest replay FILE [--calibrated] [--latency]
                                    print the outputs a recording produces
-  palmrest replay FILE [--calibrated] --curve mac-like
-                                   cumulative px and peak gain under both curves
   palmrest --check-uinput [--direct-uinput]
                                    can palmrest make its virtual devices? (asks for a touchpad
                                    and lets it go)
@@ -44,8 +42,6 @@ enum ReplayReport {
     Outputs,
     /// Per-read latency percentiles.
     Latency,
-    /// Cumulative px and peak gain under both curves.
-    Curves,
 }
 
 /// One invocation of the command.
@@ -114,16 +110,19 @@ fn parse(args: &[&str]) -> Option<Command> {
     }
 }
 
-/// `--latency` wins over everything; `--curve` must name `mac-like`.
+/// `--latency` picks the latency report; a flag other than the two replay knows is a usage error.
 fn replay_report(flags: &[&str]) -> Option<ReplayReport> {
-    if flags.contains(&"--latency") {
-        return Some(ReplayReport::Latency);
+    if !flags
+        .iter()
+        .all(|f| matches!(*f, "--calibrated" | "--latency"))
+    {
+        return None;
     }
-    match flags.iter().position(|f| *f == "--curve") {
-        None => Some(ReplayReport::Outputs),
-        Some(i) if flags.get(i + 1) == Some(&"mac-like") => Some(ReplayReport::Curves),
-        Some(_) => None,
-    }
+    Some(if flags.contains(&"--latency") {
+        ReplayReport::Latency
+    } else {
+        ReplayReport::Outputs
+    })
 }
 
 /// Runs the command `args` (the program name first) name, with the process environment.
@@ -147,7 +146,7 @@ pub fn run(args: impl IntoIterator<Item = String>) -> ExitCode {
 fn execute(command: Command, env: &Env) -> Result<(), Error> {
     match command {
         Command::Daemon { origin } => daemon::run(env, origin),
-        Command::Record { file, total } => record::record(&file, total, env),
+        Command::Record { file, total } => record::record(&file, total),
         Command::Replay {
             file,
             report,

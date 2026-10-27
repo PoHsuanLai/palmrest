@@ -34,10 +34,9 @@ daemon, `sys` and the CLI verbs are `pub(crate)`; the one public entry to them i
 | `outputs/uinput.rs` | `daemon/uinput/` (`caps`, `direct`, `emitter`, `route`, `probe`) |
 | `sys.rs` | `daemon/sys.rs` (safe evdev and uinput ioctls) and `daemon/hidioc.rs` (the one `unsafe` module: `HIDIOCSFEATURE`) |
 | `main.rs` verbs (`record_cmd`, `replay_cmd`, `check_uinput`, usage, arguments) | `command/{mod.rs (Command, parse, run), record.rs, replay.rs, probe.rs}`; `main.rs` is `fn main() -> ExitCode { palmrest::command::run(std::env::args()) }` |
-| `compare.rs` | `replay/compare.rs` |
 | `gestures/live.rs`, the seven `gestures.live_workspace_*` keys | deleted (section 8) |
 | `tests/socket.rs`, `tests/latency.rs` | unit tests beside `daemon/socket.rs` and `daemon/latency.rs` |
-| `tests/acceptance_1_decode.rs`, `acceptance_2_reference_feel.rs`, `acceptance_3_reference_cases.rs`, `acceptance_4_to_7.rs` | `tests/decode.rs`, `tests/palmrest/reference_feel.rs`, `tests/palmrest/reference_cases.rs`, `tests/palmrest/gestures_replay.rs` (named after what they test) |
+| `tests/acceptance_1_decode.rs`, `acceptance_2_reference_feel.rs` (retired with the classic curve), `acceptance_3_reference_cases.rs`, `acceptance_4_to_7.rs` | `tests/decode.rs`, `tests/palmrest/reference_cases.rs`, `tests/palmrest/gestures_replay.rs` (named after what they test) |
 
 ## 2. Modules and layers
 
@@ -47,11 +46,11 @@ daemon, `sys` and the CLI verbs are `pub(crate)`; the one public entry to them i
 |---|---|---|---|
 | L0 vocabulary | `time` (`Mono`), `keys` (`Key`, `KeyCombo`), `config/units`, `sensor/units` | newtypes | `pub` |
 | L1 sensors | `sensor` (`Sensor`, `Frame`, `Surface`, `lattice`), `sensor/magic_mouse` (`MagicMouseHid`, `decode`, `encode`, `report`, `known`), `sensor/evdev` (`EvdevMultitouch`), `touch`, `stamp` | bytes to millimetre frames | `pub` |
-| L2 settings | `config` (`Config`, sections, enums, `lenient`, `load`, `watch`) | pure except `load` and `watch` (file reads, inotify) | `pub` |
+| L2 settings | `config` (`Config`, sections, `lenient`, `load`, `watch`) | pure except `load` and `watch` (file reads, inotify) | `pub` |
 | L3 feel and gestures | `feel`, `gestures` (`contacts`, `bands`, `click`, `motion`, `scroll`, `swipe`, `one_swipe`, `tap`) | pure | `pub` |
 | L4 tracker and actions | `tracker` (`Tracker::step`, `Out`), `action` (`Gesture`, `Action`, `plan`) | pure composition: `Tracker::step(self, &Frame, now) -> (Self, Vec<Out>)` | `pub` |
 | L5 outputs model | `outputs` (`Emitter`, `RecordingEmitter`, `pad`, `events`) | the seam and the models of what is written | `pub` |
-| L6 tools | `recording`, `replay` (`replay`, `feed`, `outs`, `compare`) | pure: feed recorded reads through the core | `pub` |
+| L6 tools | `recording`, `replay` (`replay`, `feed`, `outs`) | pure: feed recorded reads through the core | `pub` |
 | L7 effects | `daemon` (`reader`, `socket`, `discover`, `hidraw`, `evdev`, `devices`, `dispatch`, `record`, `latency`, `source`, `uinput`, `sys`, `hidioc`) | threads, sockets, nodes, clocks, uinput, ioctls | `pub(crate)` |
 | L8 entry | `command` | argument parsing, one `run(args)`; reads `std::env` once into `daemon::Env` | `pub` (one fn) |
 
@@ -83,21 +82,22 @@ decision vs lock parameters, contact tracking vs palm turn, one file per scenari
 | Palm and rest rejection, contact tracking | `gestures::contacts` |
 | Scroll phases | `gestures::scroll` |
 | One-finger swipe, two-finger swipe, double-taps | `gestures::{one_swipe, swipe, tap}` |
-| Axis lock, gains, curves, wheel quantisation | `feel::*` |
+| Axis lock, the acceleration curve, px | `feel::*` |
 | Natural direction | `feel::natural` |
 | Gesture state of the daemon | `tracker::Tracker` |
-| Foreign momentum (glide) | `tracker::coast`, `tracker::foreign` |
+| The virtual touchpad's scroll for foreign clients | `tracker::foreign`, `outputs::pad` |
 | What the tracker asks for | `tracker::Out` |
 | Gesture to action table, per-desktop meaning | `action`, `keys` |
 | Socket messages | `palmrest-protocol` |
-| Every tunable value, default, range | `config::sections` |
+| The settings a person chooses (scroll speed, the gesture table), default, range | `config::sections` |
+| Every other tuning number | a named constant beside the code that uses it |
 | Lenient per-key reading | `config::lenient` |
 | Config file location, reload | `config::{load, watch}` |
 | The schema of the config for the Settings app (`palmrest --write-schema`) | `config::schema` (table in `keys.rs`), `command::schema` |
 | Virtual device write seam | `outputs::Emitter` |
 | Touchpad frame model, evdev event encoding | `outputs::{pad, events}` |
 | Recording file format | `recording` |
-| Replaying recordings, curve comparison | `replay`, `replay::compare` |
+| Replaying recordings | `replay` |
 | Threads, sockets, discovery, backoff, nodes | `daemon` |
 | Subscribers of the socket: ids, caps, budgets, the joint claim and lock | `daemon::socket::{server, client, limits}` |
 | Who has the seat, and what a connection is to the daemon (shell, other program, stranger) | `daemon::socket::seat` (`peer_of`), `daemon::socket::shell` (`Steering`, palmrest's shell table); the shell check, the seat file and the accept failures are `latchkey::guard`, shared with keycap |
@@ -115,8 +115,8 @@ decision vs lock parameters, contact tracking vs palm turn, one file per scenari
 
 | Trait | Signature | Implementors |
 |---|---|---|
-| `Emitter` (`outputs`) | `fn pad(&mut self, f: &PadFrame) -> Result<(), OutputError>; fn wheel(&mut self, d: &WheelDelta) -> Result<(), OutputError>; fn key(&mut self, k: &KeyCombo) -> Result<(), OutputError>` | `daemon::uinput::UinputEmitter` (over any `turnstile_client::Session`), `RecordingEmitter` |
-| `Setting` (`config::lenient`) | `fn read(v: &toml::Value, key: &str, warn: &mut Vec<Warning>) -> Option<Self>` | every unit newtype, enum and `Action` (through `settings_struct!` and `serde_settings!`) |
+| `Emitter` (`outputs`) | `fn pad(&mut self, f: &PadFrame) -> Result<(), OutputError>; fn key(&mut self, k: &KeyCombo) -> Result<(), OutputError>` | `daemon::uinput::UinputEmitter` (over any `turnstile_client::Session`), `RecordingEmitter` |
+| `Setting` (`config::lenient`) | `fn read(v: &toml::Value, key: &str, warn: &mut Vec<Warning>) -> Option<Self>` | every unit newtype and `Action` (through `settings_struct!` and `serde_settings!`) |
 
 Add an implementor of `Emitter` for a new kind of output
 device, of `Setting` for a new value type. Add a new trait only when two real implementations
@@ -124,8 +124,7 @@ are swapped at a boundary. The next candidate is a second source of the daemon's
 environment (`daemon::Env`); it is a plain struct until a fake exists.
 
 **Closed enums that stay enums:** `Out`, `Action`, `Gesture`, `ToHost`, `ToDaemon`, `Phase`,
-`Over`, `Sensor` (the two kinds of device), `RecordedSource` (which one a node or recording is), `Curve`, `DeviceSource`,
-`ForeignOutput`, `ForeignMomentum`, `G4Mode`.
+`Over`, `Sensor` (the two kinds of device), `RecordedSource` (which one a node or recording is).
 
 ## 5. Recipes
 
@@ -134,7 +133,7 @@ environment (`daemon::Env`); it is a plain struct until a fake exists.
 1. `gestures/<gesture>.rs`: the recogniser as a pure value, `fn step(self, input, now, &Config)
    -> (Self, Option<Event>)`, with its state as a small enum; no clock, no I/O. Declare it in
    `gestures/mod.rs` and export the type there.
-2. `config/sections.rs`: its thresholds as keys (section below), lengths in micrometres.
+2. Its thresholds as named constants at the top of its file (`Um` for lengths, `Ms` for times), not as keys: a gesture's tuning numbers are not settings.
 3. `action.rs`: a `Gesture` variant when it fires an action, its default in the
    `gesture_action_map` table, and its `Action` mapping in `plan` if it needs a new action.
 4. `tracker/mod.rs`: one field for the recogniser, one call in `step`, one arm turning its
@@ -152,11 +151,10 @@ environment (`daemon::Env`); it is a plain struct until a fake exists.
    `Frame`s on the reference lattice and a `SensorError` for a malformed read; its `Surface`
    states size, resolution, buttons and clock.
 2. `sensor/mod.rs`: declare and export it; add its variant to `Sensor` and `SensorError`.
-3. `config/enums.rs`: a `DeviceSource` variant (the `[device] source` key).
-4. `daemon/source.rs`: a `RecordedSource` variant and its arm in `Opened::read_len`;
+3. `daemon/source.rs`: a `RecordedSource` variant and its arm in `Opened::read_len`;
    `daemon/<family>.rs` for opening and identifying the node (node facts parsed, never
    searched); `recording.rs`: its arm in `RecordedSource::sensor` and `header` so recordings replay.
-5. Tests: decode tables from bytes captured with `palmrest record`; a parity test in
+4. Tests: decode tables from bytes captured with `palmrest record`; a parity test in
    `tests/` replaying an existing fixture re-expressed through the new sensor to the same
    outputs.
 
@@ -174,20 +172,25 @@ environment (`daemon::Env`); it is a plain struct until a fake exists.
 
 ### Add a config key
 
+A key is for what a person chooses (macOS offers it for a mouse or trackpad) or a real
+behaviour choice; a tuning number is a named constant beside the code that uses it.
+
 1. `config/sections.rs`: one line in the section's `settings_struct!`: `name: Type = default,
-   in lo => hi;` with a doc comment. Lengths are `Um`, times `Ms`; a closed choice is an enum in
-   `config/enums.rs` (with `serde_settings!`), never a `bool` or a string.
+   in lo => hi;` with a doc comment. Lengths are `Um`, times `Ms`; a closed choice is an enum
+   (with `serde_settings!`), never a `bool` or a string.
 2. `config/file.rs`: nothing unless it is a new section (then the `Config` field, its
    `Default`, and its `section(...)` call).
 3. Read it where it is used, from the `Config` value the caller holds (`tracker`, `gestures`,
    `feel`), never from a global.
-4. `palmrest --print-config` prints it automatically; `README.md` "Configuration" gains a line
-   only for a key with a non-obvious unit.
-5. `config/schema/keys.rs`: one row (label, help, section, Basic or Advanced, its range or
-   words). The default comes from `Config::default()`; a test fails until every key has a row,
-   and reads each row's bounds and words back through the lenient reader.
+4. `palmrest --print-config` prints it automatically; `README.md` "Configuration" names it.
+5. `config/schema/keys.rs`: one row (label, help, section, its range or words). The default
+   comes from `Config::default()`; a test fails until every key has a row, and reads each row's
+   bounds and words back through the lenient reader.
 6. Tests: the round-trip in `config/file.rs` tests, and a case in the lenient-reading table
    (a bad value keeps the default and yields one `Warning`).
+
+A key that is removed needs nothing in the reader: an unknown key in a stored file is ignored
+(`a_file_with_removed_keys_still_loads`).
 
 ### The schema and quire
 
@@ -196,21 +199,6 @@ reads (quire `design/22-SETTINGS.md` section 9). palmrest takes no quire crate, 
 quire's `SettingsSchema` derive: `config::schema` writes the same format from a table, with the
 tests above as the guard that it cannot drift from `Config`.
 
-### Add a reference-feel golden
-
-The goldens in `tests/fixtures/reference/` are frozen: produced once by the retired Python
-daemon, they define the default feel, and nothing regenerates them. A golden is added or changed
-only with the user's approval, in a commit whose message says why the feel is meant to differ;
-a change to a `feel_*` or `case_*` scenario breaks the suite by design, and is never fixed by
-re-blessing the golden.
-
-1. `tests/support/scenarios.rs`: the scenario, built from strokes, with a name that says what
-   it exercises.
-2. Its `.bin` fixture: `PALMREST_REGEN_FIXTURES=1 cargo test --test fixtures_current` (synthesised
-   fixtures only, never a golden).
-3. The golden file in `tests/fixtures/reference/`, from the user-approved source of truth.
-4. A row in `tests/palmrest/reference_feel.rs` (`SESSIONS`) or `tests/palmrest/reference_cases.rs`.
-
 ## 6. Test harness
 
 | Kind of thing | Test |
@@ -218,7 +206,7 @@ re-blessing the golden.
 | Codecs, feel, gestures, config, protocol | table tests beside the code |
 | Whole-core behaviour | replay: a recording through `replay::replay` with `RecordingEmitter`, asserting `Out`s and `Emitted`; strokes and fixtures from `tests/support` |
 | Another sensor | the same recording re-expressed as evdev events, replayed to identical outputs (`tests/evdev_parity.rs`) |
-| Reference feel | goldens in `tests/fixtures/reference/`, frozen |
+| Decoder | goldens in `tests/fixtures/reference/`, frozen; the reference gesture cases in `tests/palmrest/reference_cases.rs` |
 | Socket | a private socket in a temp dir, beside `daemon/socket.rs` |
 | Latency | ignored release test beside `daemon/latency.rs` |
 
@@ -250,7 +238,7 @@ node for writing, or reads a real config directory or a running daemon.
   shell-host, in one change.
 - **Device ids are parsed, never searched:** `HID_ID` is read as `bus:vendor:product`.
 - **No `bool` in a field, parameter or key.** A key is an enum.
-- **Feel is pinned by frozen goldens** (section 5); nothing regenerates them.
+- **The decoder is pinned by frozen goldens**; nothing regenerates them.
 - **Tests never create an input device:** every test writes through `RecordingEmitter` or
   `turnstile_client::fake::FakeSource`, and no test reads a real config directory, opens the
   service's socket or touches a running daemon (README, "Safety rules").
@@ -266,12 +254,9 @@ node for writing, or reads a real config directory or a running daemon.
 ## 8. The live model is deleted
 
 `gestures::live` (progress, dampened overshoot, release velocity, commit or cancel, finish
-duration) and the keys `gestures.live_workspace_D_um`, `live_workspace_overshoot_scale`,
-`_overshoot_cap`, `_velocity_window_ms`, `_commit_velocity`, `_finish_min_ms`,
-`_finish_max_ms` have no driver: nothing in the daemon, the tests outside `live.rs`, or
+duration) and its keys have no driver: nothing in the daemon, the tests outside `live.rs`, or
 shell-host calls them (the host has no consumer of `Swipe` yet, and would own its own
-page-swipe formulas). `host_swipe_D_um` stays: it configures the units of the `Swipe` stream
-the host receives. A live workspace mode, when built, adds its model and keys with its driver.
+page-swipe formulas). A live workspace mode, when built, adds its model and keys with its driver.
 The FINDINGS entry "Not built: live workspace mode" stays as the open item.
 
 ## 9. Migration order
@@ -286,7 +271,7 @@ Each step keeps master green (the gate above).
 3. (done) Move `sys.rs` and `outputs/uinput.rs` into `daemon/`; make `daemon` and its `sys` `pub(crate)`.
 4. (done) Move `tests/socket.rs` and `tests/latency.rs` in-crate; add `command/`, reduce `main.rs`;
    `daemon::Env` replaces the `std::env` reads in `main.rs` and `daemon/mod.rs`.
-5. (done) `compare.rs` under `replay/`; rename the acceptance test files.
+5. (done) Rename the acceptance test files.
 6. (done) Split `feel/lock.rs` and `gestures/contacts.rs` by concept.
 7. (done) Trim `lib.rs` to declarations and the root list in section 2.
 
@@ -297,7 +282,7 @@ root service) does, and makes palmrest's three devices on request after checking
 
 | File (`daemon/uinput/`) | Holds |
 |---|---|
-| `emitter.rs` | `UinputEmitter<S: Session>`: asks for the touchpad or wheel `foreign_output` names, and for the keyboard only when a gesture presses keys (`Create::keys` with the deduplicated codes of `KeyCombo::codes()`). One `Session::send` per pad frame. Counts `Sent::Dropped` frames and goes on. Turns every `ClientError` into an `OutputError` in plain words, asking the session for the service's reason first |
+| `emitter.rs` | `UinputEmitter<S: Session>`: asks for the touchpad, and for the keyboard only when a gesture presses keys (`Create::keys` with the deduplicated codes of `KeyCombo::codes()`). One `Session::send` per pad frame. Counts `Sent::Dropped` frames and goes on. Turns every `ClientError` into an `OutputError` in plain words, asking the session for the service's reason first |
 | `route.rs` | `Route`: a `DeviceSource` over the service or the direct node (`Origin`, `Either`) |
 | `direct.rs` | `DirectSource`/`DirectSession`: the same `Session` over palmrest's own uinput node (`--direct-uinput`) |
 | `caps.rs` | each device's identity and capabilities (used by `direct.rs`) |
