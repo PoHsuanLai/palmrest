@@ -5,7 +5,7 @@ use super::measure;
 use crate::config::Config;
 use crate::recording::{Record, RecordedSource};
 use crate::sensor::magic_mouse::encode::encode;
-use crate::sensor::magic_mouse::report::{Buttons, FrameStamp, Motion, Report};
+use crate::sensor::magic_mouse::report::{Buttons, Motion, Report, Stamp};
 use crate::time::Mono;
 use crate::touch::{Point, RawTouch, TouchId, TouchState};
 
@@ -27,7 +27,7 @@ fn record(ns: u64, touches: Vec<RawTouch>) -> Record {
     let report = Report {
         buttons: Buttons::NONE,
         motion: Motion::default(),
-        stamp: FrameStamp::Ticks(((ns / 1000) % (1 << 18)) as u32),
+        stamp: Some(Stamp::Ticks(((ns / 1000) % (1 << 18)) as u32)),
         touches,
     };
     Record {

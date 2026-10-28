@@ -51,32 +51,24 @@ pub fn enable_multitouch(fd: &OwnedFd) -> io::Result<()> {
     hidioc::send_feature(fd, ENABLE_MULTITOUCH)
 }
 
-/// What a wait on the node produced.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Read {
-    Report(Vec<u8>),
-    Timeout,
-    Failed(String),
-}
-
-/// Waits up to `timeout` for one read of at most `len` bytes.
-pub fn read_up_to(fd: &OwnedFd, timeout: Duration, len: usize) -> Read {
+/// Waits up to `timeout` for one read of at most `len` bytes: `Ok(None)` when nothing came.
+pub fn read_up_to(fd: &OwnedFd, timeout: Duration, len: usize) -> io::Result<Option<Vec<u8>>> {
     let ts = Timespec {
         tv_sec: timeout.as_secs() as i64,
         tv_nsec: i64::from(timeout.subsec_nanos()),
     };
     let mut fds = [PollFd::new(fd, PollFlags::IN)];
     match poll(&mut fds, Some(&ts)) {
-        Ok(0) => return Read::Timeout,
+        Ok(0) => return Ok(None),
         Ok(_) => {}
-        Err(e) if e == rustix::io::Errno::INTR => return Read::Timeout,
-        Err(e) => return Read::Failed(e.to_string()),
+        Err(e) if e == rustix::io::Errno::INTR => return Ok(None),
+        Err(e) => return Err(e.into()),
     }
     let mut buf = vec![0u8; len];
     match rustix::io::read(fd, &mut buf) {
-        Ok(0) => Read::Failed("end of file".to_owned()),
-        Ok(n) => Read::Report(buf[..n].to_vec()),
-        Err(rustix::io::Errno::AGAIN) => Read::Timeout,
-        Err(e) => Read::Failed(e.to_string()),
+        Ok(0) => Err(io::ErrorKind::UnexpectedEof.into()),
+        Ok(n) => Ok(Some(buf[..n].to_vec())),
+        Err(rustix::io::Errno::AGAIN) => Ok(None),
+        Err(e) => Err(e.into()),
     }
 }

@@ -3,7 +3,7 @@
 //! Every byte came from a radio, so nothing here panics: a malformed read is a `DecodeError`,
 //! counted by the reader and dropped.
 
-use crate::sensor::magic_mouse::report::{Buttons, FrameStamp, Motion, Report};
+use crate::sensor::magic_mouse::report::{Buttons, Motion, Report, Stamp};
 use crate::touch::{RawTouch, TouchId, TouchState, sign_extend_12};
 use thiserror::Error;
 
@@ -73,9 +73,9 @@ fn decode_touch_report(d: &[u8]) -> Result<Report, DecodeError> {
         dy: i16::from_le_bytes([d[4], d[5]]),
     };
     let stamp = if len >= HEADER_LEN {
-        FrameStamp::Ticks(ticks(d[11], d[12], d[13]))
+        Some(Stamp::Ticks(ticks(d[11], d[12], d[13])))
     } else {
-        FrameStamp::Absent
+        None
     };
     let touches = (0..count)
         .map(|i| {

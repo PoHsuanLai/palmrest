@@ -30,20 +30,12 @@ pub enum Model {
     MagicMouseUsbC,
 }
 
-/// Which touch report the model sends.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Layout {
-    /// Report 0x12 (and 0xF7 doubles): what `decode` reads.
-    Report12,
-    /// Report 0x29 with a different header and touch blocks: `decode` does not read it.
-    Report29,
-}
-
-/// Whether palmrest has ever run against this device.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Support {
-    Verified,
-    Untested,
+impl Model {
+    /// Whether `decode` reads the model's touch report: report 0x12 (and 0xF7 doubles). The
+    /// Magic Mouse 1 sends report 0x29, with a different header and touch blocks.
+    pub fn decodable(self) -> bool {
+        self != Model::MagicMouse1
+    }
 }
 
 /// One known id.
@@ -53,8 +45,8 @@ pub struct KnownDevice {
     pub vendor: u32,
     pub product: u32,
     pub model: Model,
-    pub layout: Layout,
-    pub support: Support,
+    /// Whether palmrest has ever run against this device.
+    pub verified: bool,
 }
 
 /// Apple's vendor id on Bluetooth (the Magic Mouse 2 and later).
@@ -69,8 +61,7 @@ pub const KNOWN: &[KnownDevice] = &[
         vendor: BT_VENDOR,
         product: 0x0269,
         model: Model::MagicMouse2,
-        layout: Layout::Report12,
-        support: Support::Verified,
+        verified: true,
     },
     // TODO(untested): the Magic Mouse 2 on its cable. The kernel driver matches this id; that
     // it sends the same 0x12 reports and accepts the same F1 02 01 feature report over USB is
@@ -80,8 +71,7 @@ pub const KNOWN: &[KnownDevice] = &[
         vendor: USB_VENDOR,
         product: 0x0269,
         model: Model::MagicMouse2,
-        layout: Layout::Report12,
-        support: Support::Untested,
+        verified: false,
     },
     // TODO(untested): the USB-C Magic Mouse. Product id 0x0323 is the one listed for it, not
     // read from a device, and its report layout and surface are assumed to be the Magic Mouse
@@ -91,16 +81,14 @@ pub const KNOWN: &[KnownDevice] = &[
         vendor: BT_VENDOR,
         product: 0x0323,
         model: Model::MagicMouseUsbC,
-        layout: Layout::Report12,
-        support: Support::Untested,
+        verified: false,
     },
     KnownDevice {
         bus: Bus::Usb,
         vendor: USB_VENDOR,
         product: 0x0323,
         model: Model::MagicMouseUsbC,
-        layout: Layout::Report12,
-        support: Support::Untested,
+        verified: false,
     },
     // TODO(untested): the Magic Mouse 1 sends report 0x29, whose header and 6-byte touch
     // blocks differ from report 0x12, and `decode` has no reader for it. It is listed so the
@@ -111,8 +99,7 @@ pub const KNOWN: &[KnownDevice] = &[
         vendor: USB_VENDOR,
         product: 0x030d,
         model: Model::MagicMouse1,
-        layout: Layout::Report29,
-        support: Support::Untested,
+        verified: false,
     },
 ];
 
@@ -126,6 +113,16 @@ pub fn known(bus: u32, vendor: u32, product: u32) -> Option<&'static KnownDevice
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_magic_mouse_1_is_not_decoded() {
+        let undecodable: Vec<Model> = KNOWN
+            .iter()
+            .map(|k| k.model)
+            .filter(|m| !m.decodable())
+            .collect();
+        assert_eq!(undecodable, [Model::MagicMouse1]);
+    }
 
     #[test]
     fn known_table() {
@@ -146,10 +143,7 @@ mod tests {
             );
         }
         assert_eq!(
-            KNOWN
-                .iter()
-                .filter(|k| k.support == Support::Verified)
-                .count(),
+            KNOWN.iter().filter(|k| k.verified).count(),
             1,
             "only the Bluetooth Magic Mouse 2 has been run"
         );

@@ -78,20 +78,14 @@ impl State {
     }
 }
 
-/// Whether the devices were lost since the reader last asked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Health {
-    Fine,
-    /// A write failed. What the tracker believes is down on the virtual devices is not.
-    LostDevices,
-}
-
 /// The emitter, or the wait for one.
 pub struct Devices {
     factory: Factory,
     shape: Shape,
     state: State,
-    health: Health,
+    /// A write failed since the reader last asked. What the tracker believes is down on the
+    /// virtual devices is not.
+    lost: bool,
 }
 
 impl Devices {
@@ -100,7 +94,7 @@ impl Devices {
             factory,
             shape: Shape::of(c),
             state: State::waiting(now, Cuts::default()),
-            health: Health::Fine,
+            lost: false,
         }
         .poll(now)
     }
@@ -117,8 +111,8 @@ impl Devices {
     }
 
     /// Whether a write failed since the last call; asking resets it.
-    pub fn take_health(&mut self) -> Health {
-        std::mem::replace(&mut self.health, Health::Fine)
+    pub fn take_lost(&mut self) -> bool {
+        std::mem::take(&mut self.lost)
     }
 
     /// Starts the wait after a failed write, and tries again if a retry is due. A rebuilt
@@ -208,7 +202,7 @@ impl Devices {
                 } else {
                     State::Lost { cuts }
                 };
-                self.health = Health::LostDevices;
+                self.lost = true;
             }
         }
         result

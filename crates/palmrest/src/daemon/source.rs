@@ -7,7 +7,6 @@ use super::hidraw::{self, Access, READ_LEN};
 use crate::error::Error;
 use crate::recording::RecordedSource;
 use crate::sensor::evdev::EVENT_LEN;
-use crate::sensor::magic_mouse::{Layout, Support};
 use palmrest_protocol::DeviceInfo;
 use rustix::fd::OwnedFd;
 use std::path::Path;
@@ -57,13 +56,13 @@ pub fn open(purpose: Purpose) -> Result<Opened, Error> {
 fn open_hidraw(purpose: Purpose) -> Result<Opened, Error> {
     let found = discover::find(Path::new(SYS_HIDRAW)).ok_or(Error::NoMagicMouse)?;
     let d = found.device;
-    if d.layout == Layout::Report29 {
+    if !d.model.decodable() {
         return Err(Error::UndecodableReport {
             path: found.info.path,
             model: d.model,
         });
     }
-    if d.support == Support::Untested {
+    if !d.verified {
         eprintln!(
             "palmrest: {:?} ({:04x}:{:04x}) has never been run with palmrest",
             d.model, d.vendor, d.product

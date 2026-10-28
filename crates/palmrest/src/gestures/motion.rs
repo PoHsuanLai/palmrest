@@ -8,13 +8,6 @@ use crate::time::Mono;
 use std::collections::VecDeque;
 use std::time::Duration;
 
-/// Whether the mouse is being moved.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Moving {
-    Yes,
-    No,
-}
-
 /// Recent motion samples within the window.
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct MotionWindow {
@@ -39,14 +32,10 @@ impl MotionWindow {
     }
 
     /// Whether the counts in the window exceed `threshold` counts per second.
-    pub fn moving(&self, threshold: f64, window: Duration) -> Moving {
+    pub fn moving(&self, threshold: f64, window: Duration) -> bool {
         let total: f64 = self.samples.iter().map(|&(_, c)| c).sum();
         let secs = window.as_secs_f64();
-        if secs > 0.0 && total / secs > threshold {
-            Moving::Yes
-        } else {
-            Moving::No
-        }
+        secs > 0.0 && total / secs > threshold
     }
 }
 
@@ -62,10 +51,10 @@ mod tests {
             m = m.step(Motion { dx: 3, dy: 4 }, Mono::from_millis(i * 10), w);
         }
         // 25 counts in 100 ms is 250 counts/s.
-        assert_eq!(m.moving(200.0, w), Moving::Yes);
-        assert_eq!(m.moving(300.0, w), Moving::No);
+        assert!(m.moving(200.0, w));
+        assert!(!m.moving(300.0, w));
         let m = m.step(Motion::default(), Mono::from_millis(125), w);
         // Samples at 30 and 40 ms remain: 10 counts, 100 counts/s.
-        assert_eq!(m.moving(200.0, w), Moving::No);
+        assert!(!m.moving(200.0, w));
     }
 }

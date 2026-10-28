@@ -4,7 +4,7 @@
 
 use crate::config::{Ms, Um, Units};
 use crate::gestures::bands::Bands;
-use crate::sensor::Shape;
+use crate::sensor::MagicShape;
 use crate::sensor::lattice::Ellipse;
 use crate::time::Mono;
 use crate::touch::{Point, TouchId};
@@ -25,7 +25,7 @@ const LARGE_CONTACT_MAJOR: Units = Units(240);
 pub(super) struct Touch {
     pub(super) id: TouchId,
     pub(super) at: Point,
-    pub(super) shape: Shape,
+    pub(super) shape: Option<MagicShape>,
 }
 
 /// How a contact is treated.
@@ -99,15 +99,13 @@ fn watched(k: Track, t: &Touch, now: Mono) -> Contact {
 /// P1 on the Magic Mouse's size; a sensor without one reports firm touches only.
 fn by_size(t: &Touch) -> Contact {
     match t.shape {
-        Shape::MagicMouse(m) if i32::from(m.size) < LIGHT_TOUCH_SIZE_MAX.0 => Contact::Light,
-        Shape::MagicMouse(_) | Shape::Unmeasured => Contact::Firm,
+        Some(m) if i32::from(m.size) < LIGHT_TOUCH_SIZE_MAX.0 => Contact::Light,
+        _ => Contact::Firm,
     }
 }
 
 /// P3 on the Magic Mouse's major axis; a sensor without one never sees a palm.
 fn is_palm(t: &Touch) -> bool {
-    match t.shape {
-        Shape::MagicMouse(m) => i32::from(m.major) >= LARGE_CONTACT_MAJOR.0,
-        Shape::Unmeasured => false,
-    }
+    t.shape
+        .is_some_and(|m| i32::from(m.major) >= LARGE_CONTACT_MAJOR.0)
 }

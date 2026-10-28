@@ -7,9 +7,10 @@
 use super::swipe::FingerDirection;
 use crate::config::{Fraction, Ms, Um};
 use crate::feel::{Hold, Lock, Sample};
-use crate::sensor::lattice::{Along, units};
+use crate::sensor::lattice::units;
 use crate::time::Mono;
 use crate::touch::{Point, TouchId};
+use palmrest_protocol::Axis;
 
 /// How far one finger slides to swipe.
 const TRAVEL: Um = Um(11538);
@@ -102,7 +103,7 @@ impl Stroke {
 fn judge(s: &Stroke, lift: Mono) -> Option<FingerDirection> {
     let locked_at = s.locked_at?;
     let travel = s.at.delta_from(s.origin);
-    let far = travel.x.abs() >= units(TRAVEL, Along::X);
+    let far = travel.x.abs() >= units(TRAVEL, Axis::X);
     let quick = lift.since(locked_at) <= MAX_DURATION.duration();
     let straight = f64::from(travel.x.abs()) >= AXIS_RATIO.ratio() * f64::from(travel.y.abs());
     let moving = lift.since(s.last_motion) <= SETTLE.duration();

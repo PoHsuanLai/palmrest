@@ -5,7 +5,7 @@
 //! only if that fit explains arrival times to within 1 ms at p95. Otherwise, and until the fit
 //! exists, the arrival time is the event time.
 
-use crate::sensor::FrameStamp;
+use crate::sensor::Stamp;
 use crate::time::Mono;
 use std::time::Duration;
 
@@ -30,19 +30,11 @@ pub struct Fit {
     pub residual_p95: Duration,
 }
 
-/// Which clock events are stamped with.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Source {
-    /// Still collecting (or the fit was rejected): arrival time.
-    Arrival,
-    /// The fit passed: device time.
-    Device(Fit),
-}
-
 /// The calibration state, advanced once per report.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StampClock {
-    source: Source,
+    /// The fit in force: device time. Still collecting, or the fit was rejected: arrival time.
+    fit: Option<Fit>,
     samples: Vec<(u64, u64)>,
     window_start: Option<Mono>,
     last_ticks: Option<u64>,
@@ -60,7 +52,7 @@ impl Default for StampClock {
 impl StampClock {
     pub fn new() -> Self {
         Self {
-            source: Source::Arrival,
+            fit: None,
             samples: Vec::new(),
             window_start: None,
             last_ticks: None,
@@ -70,9 +62,9 @@ impl StampClock {
         }
     }
 
-    /// Where event times currently come from.
-    pub fn source(&self) -> &Source {
-        &self.source
+    /// The fit event times currently come from; `None` while the arrival time stands in.
+    pub fn fit(&self) -> Option<Fit> {
+        self.fit
     }
 
     /// The most recent fit that failed the residual test, for the log.
@@ -83,17 +75,17 @@ impl StampClock {
     /// Takes one frame's stamp and its arrival time; returns the event time. The Magic Mouse's
     /// ticks go through the fit; a kernel stamp is already on the monotonic clock and stands in
     /// for the arrival time; no stamp is the arrival time. Event time never runs backwards.
-    pub fn observe(self, stamp: FrameStamp, arrival: Mono) -> (Self, Mono) {
+    pub fn observe(self, stamp: Option<Stamp>, arrival: Mono) -> (Self, Mono) {
         let raw = match stamp {
-            FrameStamp::Ticks(raw) => raw,
-            FrameStamp::Kernel(at) => return self.emit(at),
-            FrameStamp::Absent => return self.emit(arrival),
+            Some(Stamp::Ticks(raw)) => raw,
+            Some(Stamp::Kernel(at)) => return self.emit(at),
+            None => return self.emit(arrival),
         };
         let ticks = self.unwrap(raw, arrival);
         let s = self.record(ticks, arrival).maybe_fit(arrival);
-        let t = match &s.source {
-            Source::Device(fit) => Mono(predict(fit, ticks).max(0.0) as u64),
-            Source::Arrival => arrival,
+        let t = match &s.fit {
+            Some(fit) => Mono(predict(fit, ticks).max(0.0) as u64),
+            None => arrival,
         };
         s.emit(t)
     }
@@ -108,11 +100,9 @@ impl StampClock {
     /// counting wraps between consecutive reports.
     fn unwrap(&self, raw: u32, arrival: Mono) -> u64 {
         let raw = u64::from(raw) % TICK_SPAN;
-        match (&self.source, self.last_ticks) {
-            (Source::Device(fit), _) => {
-                nearest(raw, ((arrival.0 as f64 - fit.c) / fit.k).max(0.0) as u64)
-            }
-            (Source::Arrival, Some(last)) => {
+        match (&self.fit, self.last_ticks) {
+            (Some(fit), _) => nearest(raw, ((arrival.0 as f64 - fit.c) / fit.k).max(0.0) as u64),
+            (None, Some(last)) => {
                 let base = last - last % TICK_SPAN;
                 if raw >= last % TICK_SPAN {
                     base + raw
@@ -120,7 +110,7 @@ impl StampClock {
                     base + TICK_SPAN + raw
                 }
             }
-            (Source::Arrival, None) => raw,
+            (None, None) => raw,
         }
     }
 
@@ -129,7 +119,7 @@ impl StampClock {
             .last_arrival
             .map(|l| arrival.since(l))
             .unwrap_or_default();
-        if matches!(self.source, Source::Arrival) && gap > COLLECT_GAP_MAX {
+        if self.fit.is_none() && gap > COLLECT_GAP_MAX {
             self.samples.clear();
             self.window_start = None;
         }
@@ -144,9 +134,10 @@ impl StampClock {
         let Some(start) = self.window_start else {
             return self;
         };
-        let due = match self.source {
-            Source::Arrival => FIT_WINDOW,
-            Source::Device(_) => REFIT_EVERY,
+        let due = if self.fit.is_none() {
+            FIT_WINDOW
+        } else {
+            REFIT_EVERY
         };
         if now.since(start) < due {
             return self;
@@ -156,10 +147,10 @@ impl StampClock {
             .saturating_sub(u64::try_from(FIT_WINDOW.as_nanos()).unwrap_or(u64::MAX));
         self.samples.retain(|&(_, a)| a >= keep_from);
         match fit(&self.samples) {
-            Some(f) if f.residual_p95 < RESIDUAL_P95_MAX => self.source = Source::Device(f),
+            Some(f) if f.residual_p95 < RESIDUAL_P95_MAX => self.fit = Some(f),
             other => {
                 self.rejected = other;
-                self.source = Source::Arrival;
+                self.fit = None;
             }
         }
         self.window_start = Some(now);
@@ -232,7 +223,7 @@ mod tests {
         for i in 0..reports {
             let true_ns = 5_000_000_000 + i * PERIOD_NS;
             let ticks = ((true_ns / TICK_NS) % TICK_SPAN) as u32;
-            let (c, t) = clock.observe(FrameStamp::Ticks(ticks), Mono(true_ns + jitter(i)));
+            let (c, t) = clock.observe(Some(Stamp::Ticks(ticks)), Mono(true_ns + jitter(i)));
             clock = c;
             out.push(t);
         }
@@ -242,7 +233,7 @@ mod tests {
     #[test]
     fn steady_ticks_are_trusted_after_ten_seconds() {
         let (clock, out) = run(|i| (i * 7919 % 5) * 100_000, 2000);
-        let Source::Device(fit) = clock.source() else {
+        let Some(fit) = clock.fit() else {
             panic!("fit rejected: {:?}", clock.rejected())
         };
         assert!((fit.k - TICK_NS as f64).abs() < 1.0, "k = {}", fit.k);
@@ -255,7 +246,7 @@ mod tests {
     #[test]
     fn noisy_arrival_rejects_the_fit() {
         let (clock, out) = run(|i| (i * 7919 % 11) * 1_000_000, 1200);
-        assert_eq!(clock.source(), &Source::Arrival);
+        assert_eq!(clock.fit(), None);
         assert!(clock.rejected().is_some());
         assert!(
             out.windows(2).all(|w| w[0] <= w[1]),
@@ -265,16 +256,16 @@ mod tests {
 
     #[test]
     fn absent_stamp_uses_arrival() {
-        let (_, t) = StampClock::new().observe(FrameStamp::Absent, Mono(42));
+        let (_, t) = StampClock::new().observe(None, Mono(42));
         assert_eq!(t, Mono(42));
     }
 
     #[test]
     fn kernel_stamps_are_event_times_and_never_run_backwards() {
         let c = StampClock::new();
-        let (c, t) = c.observe(FrameStamp::Kernel(Mono(50)), Mono(90));
+        let (c, t) = c.observe(Some(Stamp::Kernel(Mono(50))), Mono(90));
         assert_eq!(t, Mono(50));
-        let (_, t) = c.observe(FrameStamp::Kernel(Mono(40)), Mono(95));
+        let (_, t) = c.observe(Some(Stamp::Kernel(Mono(40))), Mono(95));
         assert_eq!(t, Mono(50));
     }
 

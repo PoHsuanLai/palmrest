@@ -101,7 +101,7 @@ decision vs lock parameters, contact tracking vs palm turn, one file per scenari
 | Threads, sockets, discovery, backoff, nodes | `daemon` |
 | Subscribers of the socket: ids, caps, budgets, the joint claim and lock | `daemon::socket::{server, client, limits}` |
 | Who has the seat, and what a connection is to the daemon (shell, other program, stranger) | `daemon::socket::seat` (`peer_of`), `daemon::socket::shell` (`Steering`, palmrest's shell table); the shell check, the seat file and the accept failures are `latchkey::guard`, shared with keycap |
-| Actions that need the person's session (asked of the shell, never run here) | `action::Deferred` (the tracker's `Out::Deferred`), `action::Effect::Host`, `palmrest_protocol::HostAction`, `ToHost::Run` |
+| Actions that need the person's session (asked of the shell, never run here) | `action::plan` (the tracker's `Out::Deferred(Action)` becomes an `Option<HostAction>`), `palmrest_protocol::HostAction`, `ToHost::Run` |
 | The person's settings laid over the machine's | `config::layer`, `ToDaemon::UserConfig` |
 | What the shell says about the lock screen | `palmrest_protocol::ToDaemon::SessionLock`, `Tracker::with_session_lock` |
 | The virtual devices: what each is, asking the input service for them, the direct fallback | `daemon::uinput::{caps, emitter, direct, route}` |
@@ -283,7 +283,7 @@ root service) does, and makes palmrest's three devices on request after checking
 | File (`daemon/uinput/`) | Holds |
 |---|---|
 | `emitter.rs` | `UinputEmitter<S: Session>`: asks for the touchpad, and for the keyboard only when a gesture presses keys (`Create::keys` with the deduplicated codes of `KeyCombo::codes()`). One `Session::send` per pad frame. Counts `Sent::Dropped` frames and goes on. Turns every `ClientError` into an `OutputError` in plain words, asking the session for the service's reason first |
-| `route.rs` | `Route`: a `DeviceSource` over the service or the direct node (`Origin`, `Either`) |
+| `route.rs` | `LiveSource`: a `DeviceSource` over the service or the direct node (`Origin`; the session is a boxed `Session`) |
 | `direct.rs` | `DirectSource`/`DirectSession`: the same `Session` over palmrest's own uinput node (`--direct-uinput`) |
 | `caps.rs` | each device's identity and capabilities (used by `direct.rs`) |
 | `probe.rs` | `--check-uinput`: open a session and make a touchpad |

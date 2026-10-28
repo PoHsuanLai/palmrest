@@ -3,7 +3,7 @@
 //! believed: the person at the seat, and of their programs only the shell about the lock.
 
 use super::limits::{MAX_CLIENTS, PACKETS_PER_PASS, QUEUE_MAX};
-use super::server::{Flow, Server};
+use super::server::Server;
 use super::shell::Steering;
 use super::{FromSocket, SeatFile, SocketHandle, ToSocket, aggregate, aggregate_lock, bind, spawn};
 use latchkey::guard::{Held, Origin, Vouch};
@@ -308,7 +308,7 @@ fn a_subscriber_closing_during_a_broadcast_is_dropped_not_indexed() {
     drop(leaves);
     // The closed peer is readable (hang-up) and fails the broadcast in the same pass.
     s.handle.send(ToSocket::Msg(TOUCHES));
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert_eq!(s.server.subscribers(), 1);
     assert_eq!(queued(&stays).last(), Some(&TOUCHES));
 }
@@ -342,12 +342,12 @@ fn a_flood_is_read_a_budget_at_a_time() {
     };
     (0..PACKETS_PER_PASS).for_each(|_| say(Over::NotOurs));
     say(Over::Ours);
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert!(
         s.claims.try_recv().is_err(),
         "the last packet waits for the next pass"
     );
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert_eq!(s.claims.try_recv(), Ok(FromSocket::Pointer(Over::Ours)));
 }
 
@@ -358,7 +358,7 @@ fn a_full_queue_drops_messages_instead_of_blocking_the_reader() {
     for _ in 0..QUEUE_MAX + 10 {
         s.handle.send(ToSocket::Msg(TOUCHES));
     }
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
 }
 
 #[test]
@@ -381,21 +381,21 @@ fn the_session_is_unlocked_only_by_the_shell_and_any_subscriber_can_lock_it() {
     );
 
     tell(&other, LockState::Unlocked);
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert!(
         s.claims.try_recv().is_err(),
         "a program that is not the shell cannot unlock the session"
     );
 
     tell(&shell, LockState::Unlocked);
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert_eq!(
         s.claims.try_recv(),
         Ok(FromSocket::Session(LockState::Unlocked))
     );
 
     tell(&other, LockState::Locked);
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert_eq!(
         s.claims.try_recv(),
         Ok(FromSocket::Session(LockState::Locked)),
@@ -403,7 +403,7 @@ fn the_session_is_unlocked_only_by_the_shell_and_any_subscriber_can_lock_it() {
     );
 
     drop(other);
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert_eq!(
         s.claims.try_recv(),
         Ok(FromSocket::Session(LockState::Unlocked)),
@@ -411,7 +411,7 @@ fn the_session_is_unlocked_only_by_the_shell_and_any_subscriber_can_lock_it() {
     );
 
     drop(shell);
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert_eq!(
         s.claims.try_recv(),
         Ok(FromSocket::Session(LockState::Locked)),
@@ -429,7 +429,7 @@ fn only_the_shell_is_believed_about_the_pointer() {
         SendFlags::NOSIGNAL,
     )
     .unwrap();
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert!(s.claims.try_recv().is_err());
 }
 
@@ -455,7 +455,7 @@ fn a_user_switch_closes_the_connections_of_the_one_who_left() {
         SendFlags::NOSIGNAL,
     )
     .unwrap();
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert_eq!(
         s.claims.try_recv(),
         Ok(FromSocket::Session(LockState::Unlocked))
@@ -465,7 +465,7 @@ fn a_user_switch_closes_the_connections_of_the_one_who_left() {
     assert_eq!(s.server.look_at_seat(), Some(me() + 1));
     assert_eq!(s.server.subscribers(), 0);
     s.handle.send(ToSocket::Msg(TOUCHES));
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert_eq!(
         s.claims.try_recv(),
         Ok(FromSocket::UserConfig(None)),
@@ -492,12 +492,12 @@ fn only_the_shell_is_asked_to_run_an_action() {
         SendFlags::NOSIGNAL,
     )
     .unwrap();
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     let action = HostAction::Command {
         argv: vec!["notify-send".into(), "hi".into()],
     };
     s.handle.send(ToSocket::Run(action.clone()));
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     let asked = ToHost::Run { action };
     assert_eq!(queued(&shell).last(), Some(&asked));
     assert!(
@@ -520,14 +520,14 @@ fn the_persons_settings_are_believed_from_the_shell_and_go_with_the_person() {
         .unwrap();
     };
     send(&other, "[scroll]\nspeed = 1\n");
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert!(
         s.claims.try_recv().is_err(),
         "another program's settings are not read"
     );
 
     send(&shell, "[scroll]\nspeed = 40\n");
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert_eq!(
         s.claims.try_recv(),
         Ok(FromSocket::UserConfig(Some(
@@ -536,7 +536,7 @@ fn the_persons_settings_are_believed_from_the_shell_and_go_with_the_person() {
     );
 
     send(&shell, "  \n");
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert_eq!(
         s.claims.try_recv(),
         Ok(FromSocket::UserConfig(None)),
@@ -544,14 +544,14 @@ fn the_persons_settings_are_believed_from_the_shell_and_go_with_the_person() {
     );
 
     send(&shell, &"x".repeat(protocol::USER_CONFIG_MAX_BYTES + 1));
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert!(
         s.claims.try_recv().is_err(),
         "a text over the bound is not read"
     );
 
     send(&shell, "[scroll]\nspeed = 41\n");
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert!(matches!(
         s.claims.try_recv(),
         Ok(FromSocket::UserConfig(Some(_)))
@@ -559,7 +559,7 @@ fn the_persons_settings_are_believed_from_the_shell_and_go_with_the_person() {
     seat_file(&s.dir, Some(me() + 1));
     s.server.look_at_seat();
     s.handle.send(ToSocket::Msg(TOUCHES));
-    assert_eq!(s.server.step(), Flow::Continue);
+    assert_eq!(s.server.step(), None);
     assert_eq!(
         s.claims.try_recv(),
         Ok(FromSocket::UserConfig(None)),

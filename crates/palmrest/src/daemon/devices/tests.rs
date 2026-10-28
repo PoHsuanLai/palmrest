@@ -45,7 +45,10 @@ fn land() -> PadFrame {
 /// A configuration whose gestures press other keys than the default's.
 fn other_gestures() -> Config {
     let mut c = Config::default();
-    c.gestures.gesture_action_map.one_finger_swipe_left = crate::action::Action::None;
+    c.gestures.gesture_action_map = c.gestures.gesture_action_map.with(
+        crate::action::Gesture::OneFingerSwipeLeft,
+        crate::action::Action::None,
+    );
     c
 }
 
@@ -75,11 +78,11 @@ fn a_failed_write_rebuilds_the_devices_and_reports_the_loss_once() {
     });
     let mut d = Devices::new(factory, &Config::default(), Mono(0));
     assert_eq!(built.get(), 1);
-    assert_eq!(d.take_health(), Health::Fine);
+    assert!(!d.take_lost());
 
     assert!(d.pad(&land()).is_err(), "the failure is returned once");
-    assert_eq!(d.take_health(), Health::LostDevices);
-    assert_eq!(d.take_health(), Health::Fine, "asking resets it");
+    assert!(d.take_lost());
+    assert!(!d.take_lost(), "asking resets it");
     assert!(
         d.pad(&land()).is_ok(),
         "frames while rebuilding are dropped without another error"
@@ -90,7 +93,7 @@ fn a_failed_write_rebuilds_the_devices_and_reports_the_loss_once() {
     let mut d = d.poll(Mono::from_millis(1010));
     assert_eq!(built.get(), 2, "rebuilt once the delay has passed");
     assert!(d.pad(&land()).is_ok());
-    assert_eq!(d.take_health(), Health::Fine);
+    assert!(!d.take_lost());
 }
 /// Devices whose emitter talks to `source`, as the daemon's do to the real service.
 fn service_devices(source: &FakeSource, c: &Config) -> Devices {
@@ -115,7 +118,7 @@ fn a_closed_connection_is_rebuilt_after_the_pause() {
 
     source.state().send_mode = SendMode::Close;
     assert!(d.pad(&land()).is_err());
-    assert_eq!(d.take_health(), Health::LostDevices);
+    assert!(d.take_lost());
 
     source.state().send_mode = SendMode::Accept;
     let d = d.poll(Mono::from_millis(10));
@@ -132,7 +135,7 @@ fn frames_the_service_drops_cost_no_rebuild() {
     let mut d = service_devices(&source, &Config::default());
     source.state().send_mode = SendMode::Drop;
     assert!(d.pad(&land()).is_ok());
-    assert_eq!(d.take_health(), Health::Fine);
+    assert!(!d.take_lost());
     assert_eq!(source.state().opened, 1);
 }
 

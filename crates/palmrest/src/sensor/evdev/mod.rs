@@ -5,7 +5,7 @@
 // Magic Mouse through hid-magicmouse; no other mouse with a kernel multitouch driver has run it.
 // Known gaps, each unverified: the kernel applies its fuzz filter to MT positions (the Magic
 // Mouse node has fuzz 4), so small motions arrive later than on hidraw; the Magic Mouse node
-// carries no contact size, so P1 and P3 do not apply (`Shape::Unmeasured`); after SYN_DROPPED
+// carries no contact size, so P1 and P3 do not apply (`shape: None`); after SYN_DROPPED
 // the slots are cleared rather than re-read with EVIOCGMTSLOTS; a node opened mid-touch starts
 // with empty slots; `motion` is in the device's own counts, so P5's counts/s threshold means
 // whatever that device's CPI makes it.

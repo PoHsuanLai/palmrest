@@ -18,22 +18,16 @@ pub enum ClickGuard {
     Until(Mono),
 }
 
-/// Whether this report is the one where a button went down.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Press {
-    Edge,
-    NoEdge,
-}
-
 impl ClickGuard {
-    /// Advances by one report's button bits.
-    pub fn step(self, buttons: Buttons, now: Mono, guard: Duration) -> (Self, Press) {
+    /// Advances by one report's button bits. The flag is whether this report is the one where a
+    /// button went down.
+    pub fn step(self, buttons: Buttons, now: Mono, guard: Duration) -> (Self, bool) {
         match (self, buttons.any()) {
-            (Self::Pressed, true) => (Self::Pressed, Press::NoEdge),
-            (_, true) => (Self::Pressed, Press::Edge),
-            (Self::Pressed, false) => (Self::Until(now.after(guard)), Press::NoEdge),
-            (Self::Until(t), false) if now < t => (self, Press::NoEdge),
-            (_, false) => (Self::Idle, Press::NoEdge),
+            (Self::Pressed, true) => (Self::Pressed, false),
+            (_, true) => (Self::Pressed, true),
+            (Self::Pressed, false) => (Self::Until(now.after(guard)), false),
+            (Self::Until(t), false) if now < t => (self, false),
+            (_, false) => (Self::Idle, false),
         }
     }
 
@@ -54,14 +48,14 @@ mod tests {
     #[test]
     fn guard_sequence() {
         let g = Duration::from_millis(200);
-        let steps: &[(u64, Buttons, Press, Hold)] = &[
-            (0, Buttons::NONE, Press::NoEdge, Hold::Open),
-            (10, Buttons::LEFT, Press::Edge, Hold::Held),
-            (20, Buttons::LEFT, Press::NoEdge, Hold::Held),
-            (30, Buttons::NONE, Press::NoEdge, Hold::Held),
-            (229, Buttons::NONE, Press::NoEdge, Hold::Held),
-            (230, Buttons::NONE, Press::NoEdge, Hold::Open),
-            (240, Buttons::RIGHT, Press::Edge, Hold::Held),
+        let steps: &[(u64, Buttons, bool, Hold)] = &[
+            (0, Buttons::NONE, false, Hold::Open),
+            (10, Buttons::LEFT, true, Hold::Held),
+            (20, Buttons::LEFT, false, Hold::Held),
+            (30, Buttons::NONE, false, Hold::Held),
+            (229, Buttons::NONE, false, Hold::Held),
+            (230, Buttons::NONE, false, Hold::Open),
+            (240, Buttons::RIGHT, true, Hold::Held),
         ];
         let mut s = ClickGuard::Idle;
         for &(ms, b, press, hold) in steps {

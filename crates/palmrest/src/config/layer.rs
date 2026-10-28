@@ -98,7 +98,7 @@ fn merge(ours: &mut Table, theirs: Table) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::Action;
+    use crate::action::{Action, Gesture};
     use crate::config::units::Count;
 
     const MACHINE: &str =
@@ -110,8 +110,10 @@ mod tests {
         assert!(warn.is_empty(), "{warn:?}");
         assert_eq!(c.scroll.speed, Count(40));
         assert_eq!(
-            c.gestures.gesture_action_map.one_finger_swipe_left,
-            Action::None,
+            c.gestures
+                .gesture_action_map
+                .action_for(Gesture::OneFingerSwipeLeft),
+            &Action::None,
             "untouched section"
         );
         let (c, _) = layered(MACHINE, None);
@@ -132,13 +134,17 @@ mod tests {
         );
         let (c, warn) = layered(MACHINE, Some(&user));
         assert_eq!(
-            c.gestures.gesture_action_map.one_finger_double_tap,
-            Action::SmartZoom,
+            c.gestures
+                .gesture_action_map
+                .action_for(Gesture::OneFingerDoubleTap),
+            &Action::SmartZoom,
             "the long line is left out and the default stands"
         );
         assert_eq!(
-            c.gestures.gesture_action_map.two_finger_swipe_left,
-            Action::Command(vec!["notify-send".into(), "hi".into()])
+            c.gestures
+                .gesture_action_map
+                .action_for(Gesture::TwoFingerSwipeLeft),
+            &Action::Command(vec!["notify-send".into(), "hi".into()])
         );
         let keys: Vec<&str> = warn.iter().map(|w| w.key.as_str()).collect();
         assert_eq!(keys, ["gestures.gesture_action_map.one_finger_double_tap"]);

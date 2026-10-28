@@ -5,7 +5,7 @@ use crate::outputs::events::{
     ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_SLOT, ABS_MT_TRACKING_ID, BTN_LEFT, EV_ABS,
     EV_KEY, EV_REL, EV_SYN, InputEvent, SYN_REPORT,
 };
-use crate::sensor::frame::{Buttons, FrameStamp, Motion};
+use crate::sensor::frame::{Buttons, Motion, Stamp};
 use crate::sensor::lattice;
 use crate::time::Mono;
 use crate::touch::{Point, TouchId};
@@ -62,7 +62,7 @@ fn frames(sensor: &mut EvdevMultitouch, script: &[Ev]) -> Vec<Seen> {
         .unwrap()
         .iter()
         .map(|f| {
-            let FrameStamp::Kernel(t) = f.stamp else {
+            let Some(Stamp::Kernel(t)) = f.stamp else {
                 panic!("evdev frames carry the kernel's time")
             };
             let c = f

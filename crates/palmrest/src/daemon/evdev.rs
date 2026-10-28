@@ -70,18 +70,9 @@ pub struct Caps {
     pub udev: String,
 }
 
-/// Whether palmrest may read a node.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Eligibility {
-    MultitouchMouse,
-    /// Left to libinput.
-    Touchpad,
-    NotMultitouch,
-    NotAMouse,
-}
-
-/// The rule, on capabilities alone.
-pub fn classify(c: &Caps) -> Eligibility {
+/// Whether palmrest may read a node, on capabilities alone: a multitouch mouse that is not a
+/// touchpad (those are left to libinput).
+pub fn is_multitouch_mouse(c: &Caps) -> bool {
     let touchpad =
         c.udev.lines().any(|l| l.trim() == "E:ID_INPUT_TOUCHPAD=1") || c.key.has(BTN_TOOL_FINGER);
     let multitouch = [
@@ -93,12 +84,7 @@ pub fn classify(c: &Caps) -> Eligibility {
     .iter()
     .all(|&b| c.abs.has(b));
     let mouse = c.rel.has(REL_X) && c.rel.has(REL_Y);
-    match (touchpad, multitouch, mouse) {
-        (true, _, _) => Eligibility::Touchpad,
-        (false, false, _) => Eligibility::NotMultitouch,
-        (false, true, false) => Eligibility::NotAMouse,
-        (false, true, true) => Eligibility::MultitouchMouse,
-    }
+    !touchpad && multitouch && mouse
 }
 
 /// The first multitouch mouse node under `sys` (normally `/sys/class/input`), as
@@ -123,7 +109,7 @@ pub fn find(sys: &Path, udev: &Path) -> Option<(PathBuf, DeviceInfo)> {
             key: Bits::parse(&read("device/capabilities/key")),
             udev: std::fs::read_to_string(udev_entry).unwrap_or_default(),
         };
-        (classify(&caps) == Eligibility::MultitouchMouse).then(|| {
+        is_multitouch_mouse(&caps).then(|| {
             let hex = |rel: &str| u16::from_str_radix(read(rel).trim(), 16).unwrap_or(0);
             let node = Path::new("/dev/input").join(dir.file_name().unwrap_or_default());
             let info = DeviceInfo {
@@ -180,17 +166,17 @@ mod tests {
     }
 
     #[test]
-    fn classify_table() {
+    fn multitouch_mouse_table() {
         let mm = magic_mouse();
-        let cases: Vec<(&str, Caps, Eligibility)> = vec![
-            ("the Magic Mouse", mm.clone(), Eligibility::MultitouchMouse),
+        let cases: Vec<(&str, Caps, bool)> = vec![
+            ("the Magic Mouse", mm.clone(), true),
             (
                 "udev says touchpad",
                 Caps {
                     udev: "E:ID_INPUT=1\nE:ID_INPUT_TOUCHPAD=1\n".to_owned(),
                     ..mm.clone()
                 },
-                Eligibility::Touchpad,
+                false,
             ),
             (
                 "BTN_TOOL_FINGER without udev data",
@@ -199,7 +185,7 @@ mod tests {
                     udev: String::new(),
                     ..mm.clone()
                 },
-                Eligibility::Touchpad,
+                false,
             ),
             (
                 "a uinput wheel device",
@@ -209,7 +195,7 @@ mod tests {
                     key: Bits::parse("0"),
                     udev: String::new(),
                 },
-                Eligibility::NotMultitouch,
+                false,
             ),
             (
                 "a touchscreen",
@@ -219,11 +205,11 @@ mod tests {
                     udev: "E:ID_INPUT_TOUCHSCREEN=1\n".to_owned(),
                     ..mm
                 },
-                Eligibility::NotAMouse,
+                false,
             ),
         ];
         for (name, caps, want) in cases {
-            assert_eq!(classify(&caps), want, "{name}");
+            assert_eq!(is_multitouch_mouse(&caps), want, "{name}");
         }
     }
 

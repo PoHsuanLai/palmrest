@@ -2,8 +2,9 @@
 
 use crate::config::{Percent, Um};
 use crate::sensor::Surface;
-use crate::sensor::lattice::{Along, GridExtent, units};
+use crate::sensor::lattice::{GridExtent, units};
 use crate::touch::Point;
+use palmrest_protocol::Axis;
 
 /// The width of the left band, from the surface's left edge.
 const SIDE_BAND_LEFT: Um = Um(7692);
@@ -29,8 +30,8 @@ impl Bands {
     pub fn resolve(surface: &Surface) -> Self {
         let g = GridExtent::of(surface);
         Self {
-            left_below: g.x_min + units(SIDE_BAND_LEFT, Along::X),
-            right_above: g.x_max - units(SIDE_BAND_RIGHT, Along::X),
+            left_below: g.x_min + units(SIDE_BAND_LEFT, Axis::X),
+            right_above: g.x_max - units(SIDE_BAND_RIGHT, Axis::X),
             rear_from: f64::from(g.y_max) - REAR_BAND.share() * f64::from(g.y_max - g.y_min),
         }
     }

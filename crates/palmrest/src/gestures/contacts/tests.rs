@@ -1,10 +1,10 @@
 //! Tracking and rejection through `Contacts::step`.
 
-use super::{Contacts, PalmTurn, Seen, is_contact};
+use super::{Contacts, Seen, is_contact};
 use crate::gestures::bands::Bands;
+use crate::sensor::FrameContact;
 use crate::sensor::MagicShape;
 use crate::sensor::magic_mouse::{self, RESOLUTION};
-use crate::sensor::{FrameContact, Shape};
 use crate::time::Mono;
 use crate::touch::{TouchId, TouchState};
 
@@ -13,7 +13,7 @@ fn raw(id: u8, x: i32, y: i32, size: u8, major: u8) -> FrameContact {
         id: TouchId(id),
         at: RESOLUTION.point(x, y),
         state: TouchState::Touching,
-        shape: Shape::MagicMouse(MagicShape {
+        shape: Some(MagicShape {
             major,
             minor: 20,
             size,
@@ -61,20 +61,17 @@ fn nibble_table() {
         assert_eq!(is_contact(&t), counted, "nibble {n}");
     }
     t.state = TouchState::Touching;
-    t.shape = Shape::MagicMouse(MagicShape {
+    t.shape = Some(MagicShape {
         size: 0,
         ..shape(&t)
     });
     assert!(!is_contact(&t), "size 0 is not a contact");
-    t.shape = Shape::Unmeasured;
+    t.shape = None;
     assert!(is_contact(&t), "an unmeasured touch is a contact");
 }
 
 fn shape(t: &FrameContact) -> MagicShape {
-    match t.shape {
-        Shape::MagicMouse(m) => m,
-        Shape::Unmeasured => panic!("a Magic Mouse touch"),
-    }
+    t.shape.expect("a Magic Mouse touch")
 }
 
 #[test]
@@ -119,17 +116,17 @@ fn palm_is_rejected_and_reported_when_it_was_counted() {
     let (n, _) = c.step(&[raw(1, 0, 0, 12, 20)], Mono(0), &b);
     c = n;
     let (n, seen) = c.step(&[raw(1, 0, 0, 12, 250)], Mono::from_millis(10), &b);
-    assert_eq!(seen.palm, PalmTurn::InSet);
+    assert!(seen.palm_turned);
     assert!(seen.samples.is_empty());
     let (_, seen) = n.step(&[raw(1, 0, 0, 12, 20)], Mono::from_millis(20), &b);
     assert!(seen.samples.is_empty(), "palm for life");
-    assert_eq!(seen.palm, PalmTurn::None, "reported once");
+    assert!(!seen.palm_turned, "reported once");
 }
 
 #[test]
 fn a_sensor_without_shape_counts_firm_and_never_palm() {
     let bare = |id: u8, x: i32| FrameContact {
-        shape: Shape::Unmeasured,
+        shape: None,
         ..raw(id, x, 0, 0, 0)
     };
     let got = run(&[(0, vec![bare(1, 0), bare(2, 300)])]);

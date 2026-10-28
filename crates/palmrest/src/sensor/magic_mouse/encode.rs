@@ -5,19 +5,19 @@
 //! every report the mouse can send, which the round-trip test pins.
 
 use crate::sensor::magic_mouse::decode::{DOUBLE_REPORT, HEADER_LEN, SHORT_LEN, TOUCH_REPORT};
-use crate::sensor::magic_mouse::report::{FrameStamp, Report};
+use crate::sensor::magic_mouse::report::{Report, Stamp};
 use crate::touch::RawTouch;
 
 /// Encodes a report as the device would send it: header-only (8 bytes) when it has no touches
 /// and no timestamp, else 14 + 8n bytes.
 pub fn encode(r: &Report) -> Vec<u8> {
-    let short = r.touches.is_empty() && r.stamp == FrameStamp::Absent;
+    let short = r.touches.is_empty() && r.stamp.is_none();
     let mut out = vec![0u8; if short { SHORT_LEN } else { HEADER_LEN }];
     out[0] = TOUCH_REPORT;
     out[1] = r.buttons.0;
     out[2..4].copy_from_slice(&r.motion.dx.to_le_bytes());
     out[4..6].copy_from_slice(&r.motion.dy.to_le_bytes());
-    if let FrameStamp::Ticks(t) = r.stamp {
+    if let Some(Stamp::Ticks(t)) = r.stamp {
         let t = t & 0x3ffff;
         out[11] = ((t & 0x3) << 6) as u8;
         out[12] = ((t >> 2) & 0xff) as u8;
@@ -79,19 +79,19 @@ mod tests {
             Report {
                 buttons: Buttons::LEFT,
                 motion: Motion { dx: -3, dy: 700 },
-                stamp: FrameStamp::Ticks(0x2_abcd),
+                stamp: Some(Stamp::Ticks(0x2_abcd)),
                 touches: vec![],
             },
             Report {
                 buttons: Buttons::NONE,
                 motion: Motion::default(),
-                stamp: FrameStamp::Ticks(1),
+                stamp: Some(Stamp::Ticks(1)),
                 touches: vec![touch(0, -1100, 2047)],
             },
             Report {
                 buttons: Buttons::RIGHT,
                 motion: Motion { dx: 1, dy: -1 },
-                stamp: FrameStamp::Ticks(0x3ffff),
+                stamp: Some(Stamp::Ticks(0x3ffff)),
                 touches: vec![touch(15, 1258, -1589), touch(3, 0, 0), touch(9, -1, 1)],
             },
         ];
@@ -103,12 +103,12 @@ mod tests {
     #[test]
     fn double_round_trips_in_order() {
         let a = Report {
-            stamp: FrameStamp::Ticks(5),
+            stamp: Some(Stamp::Ticks(5)),
             touches: vec![touch(1, 10, 20)],
             ..Report::empty()
         };
         let b = Report {
-            stamp: FrameStamp::Ticks(6),
+            stamp: Some(Stamp::Ticks(6)),
             touches: vec![touch(1, 12, 20)],
             ..Report::empty()
         };

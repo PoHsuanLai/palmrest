@@ -10,9 +10,9 @@ pub mod swipe;
 pub mod tap;
 
 pub use bands::Bands;
-pub use click::{ClickGuard, Press};
-pub use contacts::{Contact, Contacts, PalmTurn, Seen};
-pub use motion::{MotionWindow, Moving};
+pub use click::ClickGuard;
+pub use contacts::{Contact, Contacts, Seen};
+pub use motion::MotionWindow;
 pub use one_swipe::OneSwipe;
 pub use scroll::{ScrollEvent, ScrollG, Stage};
 pub use swipe::{FingerDirection, SwipeEvent, SwipeG};

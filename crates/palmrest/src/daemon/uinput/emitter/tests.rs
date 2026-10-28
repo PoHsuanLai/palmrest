@@ -71,11 +71,11 @@ fn frames_the_service_has_no_room_for_are_counted_and_the_pad_goes_on() {
     for _ in 0..3 {
         assert!(e.pad(&LAND).is_ok(), "a lost frame is not an error");
     }
-    assert_eq!(e.lost, FramesLost(3));
+    assert_eq!(e.lost, 3);
     source.state().send_mode = SendMode::Accept;
     e.pad(&LAND).unwrap();
     assert_eq!(source.state().sent.len(), 1, "the next frame goes through");
-    assert_eq!(e.lost, FramesLost(3));
+    assert_eq!(e.lost, 3);
 }
 
 #[test]

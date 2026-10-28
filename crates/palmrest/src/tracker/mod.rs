@@ -8,14 +8,14 @@ mod foreign;
 mod out;
 
 use out::while_unlocked;
-pub use out::{Out, Source, action_outs, tap_gesture, tap_outs};
+pub use out::{Out, Source, action_outs, tap_outs};
 
 use crate::action::Gesture;
 use crate::config::{Config, Count, Fraction, Ms};
 use crate::feel::{Hold, Lock, LockParams};
 use crate::gestures::{
-    Bands, ClickGuard, Contacts, FingerDirection, MotionWindow, Moving, OneSwipe, PalmTurn, Press,
-    ScrollEvent, ScrollG, SwipeEvent, SwipeG, TapG,
+    Bands, ClickGuard, Contacts, MotionWindow, OneSwipe, ScrollEvent, ScrollG, SwipeEvent, SwipeG,
+    TapG,
 };
 use crate::sensor::{Frame, Surface, magic_mouse};
 use crate::time::Mono;
@@ -176,9 +176,10 @@ impl Tracker {
         let window = MOUSE_MOVING_WINDOW.duration();
         let motion = self.motion.step(r.motion, now, window);
         let moving = motion.moving(f64::from(MOUSE_MOVING_THRESHOLD.0), window);
-        let multiplier = match moving {
-            Moving::Yes => MOUSE_MOVING_LOCK_MULTIPLIER.ratio(),
-            Moving::No => 1.0,
+        let multiplier = if moving {
+            MOUSE_MOVING_LOCK_MULTIPLIER.ratio()
+        } else {
+            1.0
         };
         let bands = Bands::resolve(&self.surface);
         let (contacts, seen) = self.contacts.step(&r.contacts, now, &bands);
@@ -192,9 +193,10 @@ impl Tracker {
         let (s, mut out) = s.tick(now);
         let (s, touches) = s.touches(active(&seen.samples), ActiveTouch::Down);
         out.extend(touches);
-        let (s, cancelled) = match (press, seen.palm) {
-            (Press::Edge, _) | (_, PalmTurn::InSet) => s.cancel_scroll(now),
-            _ => (s, vec![]),
+        let (s, cancelled) = if press || seen.palm_turned {
+            s.cancel_scroll(now)
+        } else {
+            (s, vec![])
         };
         out.extend(cancelled);
         let params = LockParams::from_config(&s.cfg, multiplier);
@@ -246,13 +248,8 @@ impl Tracker {
         let mut out = Vec::new();
         let (one, g4) = self.one.step(samples, self.scroll.lock(), now, hold);
         if let Some(dir) = g4 {
-            let g = pick(
-                dir,
-                Gesture::OneFingerSwipeRight,
-                Gesture::OneFingerSwipeLeft,
-            );
             out.extend(action_outs(
-                map.action_for(g),
+                map.action_for(Gesture::one_finger_swipe(dir)),
                 Source::OneFingerSwipe,
                 self.claimed,
             ));
@@ -265,7 +262,7 @@ impl Tracker {
         if let Some(kind) = kind {
             out.extend(tap_outs(
                 kind,
-                map.action_for(tap_gesture(kind)),
+                map.action_for(Gesture::tap(kind)),
                 self.claimed,
                 now.0,
             ));
@@ -298,22 +295,11 @@ impl Tracker {
                 })]
             }
             SwipeEvent::Fire(dir) => {
-                let g = pick(
-                    dir,
-                    Gesture::TwoFingerSwipeRight,
-                    Gesture::TwoFingerSwipeLeft,
-                );
+                let g = Gesture::two_finger_swipe(dir);
                 let action = self.cfg.gestures.gesture_action_map.action_for(g);
                 action_outs(action, Source::Other, self.claimed)
             }
         }
-    }
-}
-
-fn pick(dir: FingerDirection, right: Gesture, left: Gesture) -> Gesture {
-    match dir {
-        FingerDirection::Right => right,
-        FingerDirection::Left => left,
     }
 }
 

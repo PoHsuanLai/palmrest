@@ -2,7 +2,8 @@
 //! motion locks to, if any.
 
 use crate::config::{Config, Fraction, Ms, Px, Um};
-use crate::sensor::lattice::{Along, units};
+use crate::sensor::lattice::units;
+use palmrest_protocol::Axis;
 use std::time::Duration;
 
 /// Accumulated motion an axis needs before it can lock, per axis, in grid units.
@@ -79,8 +80,8 @@ impl LockParams {
     pub fn from_config(c: &Config, threshold_multiplier: f64) -> Self {
         Self {
             threshold: Threshold {
-                x: scaled(LOCK_THRESHOLD_X, Along::X, threshold_multiplier),
-                y: scaled(LOCK_THRESHOLD_Y, Along::Y, threshold_multiplier),
+                x: scaled(LOCK_THRESHOLD_X, Axis::X, threshold_multiplier),
+                y: scaled(LOCK_THRESHOLD_Y, Axis::Y, threshold_multiplier),
             },
             ratio: LOCK_RATIO.ratio(),
             timeout: LOCK_TIMEOUT.duration(),
@@ -91,7 +92,7 @@ impl LockParams {
 }
 
 /// A threshold on the grid times the P5 multiplier, rounded as the reference feel rounds it.
-fn scaled(um: Um, axis: Along, multiplier: f64) -> i32 {
+fn scaled(um: Um, axis: Axis, multiplier: f64) -> i32 {
     (f64::from(units(um, axis)) * multiplier).round() as i32
 }
 

@@ -4,26 +4,87 @@
 //! reference platform's. `plan` is pure: it says which key to press or which program to run,
 //! and the daemon does it.
 
-use crate::config::lenient::{Setting, Warning};
+use crate::config::lenient::{Setting, Warning, field};
+use crate::gestures::FingerDirection;
 use crate::keys::{Key, KeyCombo};
-use palmrest_protocol::{HostAction, Workspace};
-use serde::{Deserialize, Serialize};
+use palmrest_protocol::{HostAction, TapKind, Workspace};
+use serde::ser::SerializeStruct;
+use serde::{Deserialize, Serialize, Serializer};
 use toml::Value;
 
-/// A gesture that can fire an action.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+/// A gesture that can fire an action, in the table's order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Gesture {
-    OneFingerSwipeLeft,
     OneFingerSwipeRight,
-    TwoFingerSwipeLeft,
+    OneFingerSwipeLeft,
     TwoFingerSwipeRight,
+    TwoFingerSwipeLeft,
     TwoFingerDoubleTap,
     OneFingerDoubleTap,
 }
 
+impl Gesture {
+    /// Every gesture, in table order.
+    pub const ALL: [Gesture; 6] = [
+        Self::OneFingerSwipeRight,
+        Self::OneFingerSwipeLeft,
+        Self::TwoFingerSwipeRight,
+        Self::TwoFingerSwipeLeft,
+        Self::TwoFingerDoubleTap,
+        Self::OneFingerDoubleTap,
+    ];
+
+    /// The one-finger swipe the fingers made.
+    pub fn one_finger_swipe(dir: FingerDirection) -> Self {
+        match dir {
+            FingerDirection::Right => Self::OneFingerSwipeRight,
+            FingerDirection::Left => Self::OneFingerSwipeLeft,
+        }
+    }
+
+    /// The two-finger swipe the fingers made.
+    pub fn two_finger_swipe(dir: FingerDirection) -> Self {
+        match dir {
+            FingerDirection::Right => Self::TwoFingerSwipeRight,
+            FingerDirection::Left => Self::TwoFingerSwipeLeft,
+        }
+    }
+
+    /// The double-tap that fired.
+    pub fn tap(kind: TapKind) -> Self {
+        match kind {
+            TapKind::One => Self::OneFingerDoubleTap,
+            TapKind::Two => Self::TwoFingerDoubleTap,
+        }
+    }
+
+    /// The key of this gesture in `[gestures.gesture_action_map]` and its shipped action (12.6).
+    fn row(self) -> (&'static str, Action) {
+        match self {
+            Self::OneFingerSwipeRight => ("one_finger_swipe_right", Action::Back),
+            Self::OneFingerSwipeLeft => ("one_finger_swipe_left", Action::Forward),
+            Self::TwoFingerSwipeRight => {
+                ("two_finger_swipe_right", Action::Workspace(Workspace::Prev))
+            }
+            Self::TwoFingerSwipeLeft => {
+                ("two_finger_swipe_left", Action::Workspace(Workspace::Next))
+            }
+            Self::TwoFingerDoubleTap => (
+                "two_finger_double_tap",
+                Action::Workspace(Workspace::Overview),
+            ),
+            Self::OneFingerDoubleTap => ("one_finger_double_tap", Action::SmartZoom),
+        }
+    }
+}
+
 /// What a gesture does.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Read from the file as `{ kind = "keys", v = "alt+left" }` or, for an action without a value,
+/// as the bare word (`"back"`). A workspace step is the word `workspace_prev`, `workspace_next`
+/// or `workspace_overview`; [`Setting::read`] maps those words to `Workspace` and `Serialize`
+/// writes them back, so the file is the same as when each step was its own variant.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "kind", content = "v", rename_all = "snake_case")]
 pub enum Action {
     None,
@@ -31,9 +92,7 @@ pub enum Action {
     Back,
     /// Alt+Right on the virtual keyboard.
     Forward,
-    WorkspacePrev,
-    WorkspaceNext,
-    WorkspaceOverview,
+    Workspace(Workspace),
     /// Our surfaces only (a `Tap{One}` to the host under the pointer); nothing elsewhere.
     SmartZoom,
     Keys(KeyCombo),
@@ -41,19 +100,71 @@ pub enum Action {
     ShellIpc(String),
 }
 
+/// `{ kind = .. }`, the form of an action without a value.
+fn bare<S: Serializer>(s: S, kind: &str) -> Result<S::Ok, S::Error> {
+    let mut st = s.serialize_struct("Action", 1)?;
+    st.serialize_field("kind", kind)?;
+    st.end()
+}
+
+/// `{ kind = .., v = .. }`, the form of an action with a value.
+fn valued<S: Serializer, T: Serialize + ?Sized>(
+    s: S,
+    kind: &str,
+    v: &T,
+) -> Result<S::Ok, S::Error> {
+    let mut st = s.serialize_struct("Action", 2)?;
+    st.serialize_field("kind", kind)?;
+    st.serialize_field("v", v)?;
+    st.end()
+}
+
+impl Serialize for Action {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::None => bare(s, "none"),
+            Self::Back => bare(s, "back"),
+            Self::Forward => bare(s, "forward"),
+            Self::Workspace(Workspace::Prev) => bare(s, "workspace_prev"),
+            Self::Workspace(Workspace::Next) => bare(s, "workspace_next"),
+            Self::Workspace(Workspace::Overview) => bare(s, "workspace_overview"),
+            Self::SmartZoom => bare(s, "smart_zoom"),
+            Self::Keys(k) => valued(s, "keys", k),
+            Self::Command(argv) => valued(s, "command", argv),
+            Self::ShellIpc(line) => valued(s, "shell_ipc", line),
+        }
+    }
+}
+
+/// The tagged table a bare word or a `{ kind = word }` table stands for; a `workspace_*` word
+/// becomes `{ kind = "workspace", v = step }`.
+fn tagged(v: &Value) -> Value {
+    let kind = match v {
+        Value::String(word) => word,
+        Value::Table(t) => match (t.get("kind"), t.get("v")) {
+            (Some(Value::String(word)), None) => word,
+            _ => return v.clone(),
+        },
+        _ => return v.clone(),
+    };
+    let mut t = toml::Table::new();
+    match kind.strip_prefix("workspace_") {
+        Some(step) => {
+            t.insert("kind".to_owned(), Value::String("workspace".to_owned()));
+            t.insert("v".to_owned(), Value::String(step.to_owned()));
+        }
+        None => {
+            t.insert("kind".to_owned(), Value::String(kind.clone()));
+        }
+    }
+    Value::Table(t)
+}
+
 impl Setting for Action {
     /// Accepts the tagged form `{ kind = "keys", v = "alt+left" }` and, for actions without a
     /// value, the bare string `"back"`.
     fn read(v: &Value, key: &str, warn: &mut Vec<Warning>) -> Option<Self> {
-        let tagged = match v {
-            Value::String(s) => {
-                let mut t = toml::Table::new();
-                t.insert("kind".to_owned(), Value::String(s.clone()));
-                Value::Table(t)
-            }
-            other => other.clone(),
-        };
-        let action: Option<Self> = crate::config::lenient::read_serde(&tagged, key, warn);
+        let action: Option<Self> = crate::config::lenient::read_serde(&tagged(v), key, warn);
         if let Some(Self::Keys(combo)) = &action
             && !combo.is_sendable()
         {
@@ -69,15 +180,28 @@ impl Setting for Action {
     }
 }
 
-crate::settings_struct! {
-    /// One action per gesture; the defaults are the reference mapping (12.6).
-    pub struct ActionMap {
-        one_finger_swipe_right: Action = Action::Back;
-        one_finger_swipe_left: Action = Action::Forward;
-        two_finger_swipe_right: Action = Action::WorkspacePrev;
-        two_finger_swipe_left: Action = Action::WorkspaceNext;
-        two_finger_double_tap: Action = Action::WorkspaceOverview;
-        one_finger_double_tap: Action = Action::SmartZoom;
+/// One action per gesture; the defaults are the reference mapping (12.6).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ActionMap {
+    /// By [`Gesture::ALL`] order.
+    actions: [Action; 6],
+}
+
+impl Default for ActionMap {
+    fn default() -> Self {
+        Self {
+            actions: Gesture::ALL.map(|g| g.row().1),
+        }
+    }
+}
+
+impl Serialize for ActionMap {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_map(
+            Gesture::ALL
+                .iter()
+                .map(|&g| (g.row().0, self.action_for(g))),
+        )
     }
 }
 
@@ -93,36 +217,32 @@ impl Setting for ActionMap {
 }
 
 impl ActionMap {
+    /// Reads the table key by key, defaulting what is missing or bad.
+    pub fn from_table(t: &toml::Table, path: &str, warn: &mut Vec<Warning>) -> Self {
+        Self {
+            actions: Gesture::ALL.map(|g| {
+                let (name, default) = g.row();
+                field(t, path, name, default, warn)
+            }),
+        }
+    }
+
     /// The action configured for `g`.
     pub fn action_for(&self, g: Gesture) -> &Action {
-        match g {
-            Gesture::OneFingerSwipeLeft => &self.one_finger_swipe_left,
-            Gesture::OneFingerSwipeRight => &self.one_finger_swipe_right,
-            Gesture::TwoFingerSwipeLeft => &self.two_finger_swipe_left,
-            Gesture::TwoFingerSwipeRight => &self.two_finger_swipe_right,
-            Gesture::TwoFingerDoubleTap => &self.two_finger_double_tap,
-            Gesture::OneFingerDoubleTap => &self.one_finger_double_tap,
-        }
+        &self.actions[g as usize]
+    }
+
+    /// This map with `action` for `g`.
+    pub fn with(mut self, g: Gesture, action: Action) -> Self {
+        self.actions[g as usize] = action;
+        self
     }
 
     /// Every key combination the table can press: what the virtual keyboard registers.
     pub fn combos(&self) -> Vec<KeyCombo> {
-        ALL_GESTURES
-            .iter()
-            .filter_map(|&g| key_of(self.action_for(g)))
-            .collect()
+        self.actions.iter().filter_map(key_of).collect()
     }
 }
-
-/// Every gesture, in table order.
-pub const ALL_GESTURES: [Gesture; 6] = [
-    Gesture::OneFingerSwipeRight,
-    Gesture::OneFingerSwipeLeft,
-    Gesture::TwoFingerSwipeRight,
-    Gesture::TwoFingerSwipeLeft,
-    Gesture::TwoFingerDoubleTap,
-    Gesture::OneFingerDoubleTap,
-];
 
 /// The key an action presses, if it is a key action.
 pub fn key_of(a: &Action) -> Option<KeyCombo> {
@@ -134,27 +254,14 @@ pub fn key_of(a: &Action) -> Option<KeyCombo> {
     }
 }
 
-/// What an action needs from the person's session: everything that is not a key, which the daemon
-/// cannot do alone. The one thing that travels from the tracker to the dispatcher besides keys.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", content = "v", rename_all = "snake_case")]
-pub enum Deferred {
-    Workspace(Workspace),
-    ShellIpc(String),
-    Command(Vec<String>),
-}
-
 impl Action {
-    /// What this action asks of the session, when it is not a key and not nothing.
-    pub fn deferred(&self) -> Option<Deferred> {
-        match self {
-            Self::WorkspacePrev => Some(Deferred::Workspace(Workspace::Prev)),
-            Self::WorkspaceNext => Some(Deferred::Workspace(Workspace::Next)),
-            Self::WorkspaceOverview => Some(Deferred::Workspace(Workspace::Overview)),
-            Self::ShellIpc(line) => Some(Deferred::ShellIpc(line.clone())),
-            Self::Command(argv) => Some(Deferred::Command(argv.clone())),
-            Self::None | Self::Back | Self::Forward | Self::SmartZoom | Self::Keys(_) => None,
-        }
+    /// Whether this action asks something of the person's session: everything that is not a key
+    /// and not nothing, which the daemon cannot do alone.
+    pub fn asks_session(&self) -> bool {
+        matches!(
+            self,
+            Self::Workspace(_) | Self::ShellIpc(_) | Self::Command(_)
+        )
     }
 }
 
@@ -182,44 +289,33 @@ impl Desktop {
     }
 }
 
-/// What the daemon does for a non-key action.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Effect {
-    /// Ask the shell to do it in the person's session: the daemon is a system service, with no
-    /// session of its own to run a program or a shell command in.
-    Host(HostAction),
-    Nothing,
-}
-
-/// The effect of `deferred` on `desktop`.
-pub fn plan(deferred: &Deferred, desktop: Desktop) -> Effect {
-    match (deferred, desktop) {
-        (Deferred::Workspace(Workspace::Prev), Desktop::Kde) => {
-            kwin("Switch One Desktop to the Left")
+/// What `action` asks of the shell on `desktop`, if anything: the daemon is a system service, with
+/// no session of its own to run a program or a shell command in.
+pub fn plan(action: &Action, desktop: Desktop) -> Option<HostAction> {
+    match (action, desktop) {
+        (Action::Workspace(Workspace::Prev), Desktop::Kde) => {
+            Some(kwin("Switch One Desktop to the Left"))
         }
-        (Deferred::Workspace(Workspace::Next), Desktop::Kde) => {
-            kwin("Switch One Desktop to the Right")
+        (Action::Workspace(Workspace::Next), Desktop::Kde) => {
+            Some(kwin("Switch One Desktop to the Right"))
         }
-        (Deferred::Workspace(Workspace::Overview), Desktop::Kde) => kwin("Overview"),
-        (Deferred::Workspace(step), _) => Effect::Host(HostAction::Workspace(*step)),
-        (Deferred::ShellIpc(s), _) => bounded(HostAction::Shell {
+        (Action::Workspace(Workspace::Overview), Desktop::Kde) => Some(kwin("Overview")),
+        (Action::Workspace(step), _) => Some(HostAction::Workspace(*step)),
+        (Action::ShellIpc(s), _) => bounded(HostAction::Shell {
             words: s.split_whitespace().map(str::to_owned).collect(),
         }),
-        (Deferred::Command(argv), _) => bounded(HostAction::Command { argv: argv.clone() }),
+        (Action::Command(argv), _) => bounded(HostAction::Command { argv: argv.clone() }),
+        _ => None,
     }
 }
 
-/// `action` as an effect when its words fit what the shell is asked for.
-fn bounded(action: HostAction) -> Effect {
-    if action.fits() {
-        Effect::Host(action)
-    } else {
-        Effect::Nothing
-    }
+/// `action` when its words fit what the shell is asked for.
+fn bounded(action: HostAction) -> Option<HostAction> {
+    action.fits().then_some(action)
 }
 
-fn kwin(shortcut: &str) -> Effect {
-    Effect::Host(HostAction::Command {
+fn kwin(shortcut: &str) -> HostAction {
+    HostAction::Command {
         argv: [
             "qdbus-qt6",
             "org.kde.kglobalaccel",
@@ -230,7 +326,7 @@ fn kwin(shortcut: &str) -> Effect {
         .iter()
         .map(|s| (*s).to_owned())
         .collect(),
-    })
+    }
 }
 
 #[cfg(test)]
@@ -243,9 +339,18 @@ mod tests {
         const CASES: &[(Gesture, Action)] = &[
             (Gesture::OneFingerSwipeRight, Action::Back),
             (Gesture::OneFingerSwipeLeft, Action::Forward),
-            (Gesture::TwoFingerSwipeRight, Action::WorkspacePrev),
-            (Gesture::TwoFingerSwipeLeft, Action::WorkspaceNext),
-            (Gesture::TwoFingerDoubleTap, Action::WorkspaceOverview),
+            (
+                Gesture::TwoFingerSwipeRight,
+                Action::Workspace(Workspace::Prev),
+            ),
+            (
+                Gesture::TwoFingerSwipeLeft,
+                Action::Workspace(Workspace::Next),
+            ),
+            (
+                Gesture::TwoFingerDoubleTap,
+                Action::Workspace(Workspace::Overview),
+            ),
             (Gesture::OneFingerDoubleTap, Action::SmartZoom),
         ];
         for (g, a) in CASES {
@@ -264,18 +369,18 @@ mod tests {
         let t: toml::Table = text.parse().unwrap();
         let mut warn = Vec::new();
         let m = ActionMap::from_table(&t, "gestures.gesture_action_map", &mut warn);
-        assert_eq!(m.one_finger_swipe_right, Action::Forward);
+        assert_eq!(m.action_for(Gesture::OneFingerSwipeRight), &Action::Forward);
         assert_eq!(
-            m.one_finger_swipe_left,
-            Action::Keys(KeyCombo::try_from("ctrl+pagedown".to_owned()).unwrap())
+            m.action_for(Gesture::OneFingerSwipeLeft),
+            &Action::Keys(KeyCombo::try_from("ctrl+pagedown".to_owned()).unwrap())
         );
         assert_eq!(
-            m.two_finger_double_tap,
-            Action::Command(vec!["notify-send".into(), "hi".into()])
+            m.action_for(Gesture::TwoFingerDoubleTap),
+            &Action::Command(vec!["notify-send".into(), "hi".into()])
         );
         assert_eq!(
-            m.two_finger_swipe_left,
-            Action::WorkspaceNext,
+            m.action_for(Gesture::TwoFingerSwipeLeft),
+            &Action::Workspace(Workspace::Next),
             "a bad value keeps the default"
         );
         assert_eq!(warn.len(), 1);
@@ -311,8 +416,8 @@ mod tests {
             warn[0]
         );
         assert_eq!(
-            m.one_finger_swipe_right,
-            Action::Keys(KeyCombo::try_from("enter".to_owned()).unwrap())
+            m.action_for(Gesture::OneFingerSwipeRight),
+            &Action::Keys(KeyCombo::try_from("enter".to_owned()).unwrap())
         );
     }
 
@@ -334,44 +439,58 @@ mod tests {
 
     #[test]
     fn plan_table() {
-        let kde_left = plan(&Deferred::Workspace(Workspace::Prev), Desktop::Kde);
+        let workspace = Action::Workspace;
+        let kde_left = plan(&workspace(Workspace::Prev), Desktop::Kde);
         assert!(matches!(
             &kde_left,
-            Effect::Host(HostAction::Command { argv })
+            Some(HostAction::Command { argv })
                 if argv.last().map(String::as_str) == Some("Switch One Desktop to the Left")
         ));
         for desktop in [Desktop::Quire, Desktop::Other] {
             for step in [Workspace::Prev, Workspace::Next, Workspace::Overview] {
                 assert_eq!(
-                    plan(&Deferred::Workspace(step), desktop),
-                    Effect::Host(HostAction::Workspace(step)),
+                    plan(&workspace(step), desktop),
+                    Some(HostAction::Workspace(step)),
                     "{step:?} on {desktop:?}"
                 );
             }
         }
+        assert_eq!(plan(&Action::Command(vec![]), Desktop::Kde), None);
+        assert_eq!(plan(&Action::Back, Desktop::Kde), None);
         assert_eq!(
-            plan(&Deferred::Command(vec![]), Desktop::Kde),
-            Effect::Nothing
-        );
-        assert_eq!(
-            plan(&Deferred::ShellIpc("dock toggle".into()), Desktop::Quire),
-            Effect::Host(HostAction::Shell {
+            plan(&Action::ShellIpc("dock toggle".into()), Desktop::Quire),
+            Some(HostAction::Shell {
                 words: vec!["dock".into(), "toggle".into()]
             })
         );
         assert_eq!(
             plan(
-                &Deferred::Command(vec!["notify-send".into(), "hi".into()]),
+                &Action::Command(vec!["notify-send".into(), "hi".into()]),
                 Desktop::Other
             ),
-            Effect::Host(HostAction::Command {
+            Some(HostAction::Command {
                 argv: vec!["notify-send".into(), "hi".into()]
             })
         );
         assert_eq!(
-            plan(&Deferred::ShellIpc("w ".repeat(17)), Desktop::Other),
-            Effect::Nothing,
+            plan(&Action::ShellIpc("w ".repeat(17)), Desktop::Other),
+            None,
             "a line over the bounds asks for nothing"
         );
+    }
+
+    #[test]
+    fn the_shipped_words_are_written_and_read_back() {
+        for step in [Workspace::Prev, Workspace::Next, Workspace::Overview] {
+            let action = Action::Workspace(step);
+            let written = toml::Value::try_from(&action).unwrap();
+            let word = written["kind"].as_str().unwrap().to_owned();
+            assert!(word.starts_with("workspace_"), "{word}");
+            assert!(written.get("v").is_none(), "{written}");
+            let mut warn = Vec::new();
+            assert_eq!(Action::read(&written, "k", &mut warn), Some(action.clone()));
+            assert_eq!(Action::read(&word.into(), "k", &mut warn), Some(action));
+            assert!(warn.is_empty());
+        }
     }
 }

@@ -8,10 +8,10 @@
 
 use crate::config::{Ms, Um};
 use crate::feel::{Hold, Sample};
-use crate::sensor::lattice::{Along, units};
+use crate::sensor::lattice::units;
 use crate::time::Mono;
 use crate::touch::TouchId;
-use palmrest_protocol::{GestureId, Phase};
+use palmrest_protocol::{Axis, GestureId, Phase};
 
 /// Horizontal travel that fires.
 const THRESHOLD: Um = Um(7692);
@@ -143,8 +143,8 @@ impl SwipeG {
             travel_y: p.travel_y + dy,
             ..p
         };
-        let vertical_max = units(VERTICAL_MAX, Along::Y);
-        let threshold = units(THRESHOLD, Along::X);
+        let vertical_max = units(VERTICAL_MAX, Axis::Y);
+        let threshold = units(THRESHOLD, Axis::X);
         let anchor = |p: Pair| Pair {
             travel_x: 0,
             travel_y: 0,

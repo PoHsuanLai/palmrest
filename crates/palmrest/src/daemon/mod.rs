@@ -24,7 +24,7 @@ use devices::{Devices, Factory};
 pub use env::Env;
 use palmrest_protocol::LockState;
 use std::sync::mpsc;
-use uinput::{LiveRoute, Origin, UinputEmitter};
+use uinput::{LiveSource, Origin, UinputEmitter};
 
 /// Runs the daemon, making its virtual devices from `origin`: never returns unless setup fails.
 pub fn run(env: &Env, origin: Origin) -> Result<(), Error> {
@@ -51,7 +51,7 @@ pub fn run(env: &Env, origin: Origin) -> Result<(), Error> {
     let socket = socket::spawn(listener, notes_tx, env.seat_file.clone(), env.steering)
         .map_err(Error::SocketThread)?;
     eprintln!("palmrest: listening on {}", path.display());
-    let route = LiveRoute::live(origin);
+    let route = LiveSource(origin);
     let factory: Factory = Box::new(move |combos| {
         Ok(Box::new(UinputEmitter::create(&route, combos)?) as Box<dyn Emitter>)
     });

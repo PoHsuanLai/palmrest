@@ -15,9 +15,9 @@ pub mod surface;
 pub mod units;
 
 pub use evdev::{EvdevError, EvdevMultitouch, EvdevSpec};
-pub use frame::{Buttons, Frame, FrameContact, FrameStamp, MagicShape, Motion, Shape};
+pub use frame::{Buttons, Frame, FrameContact, MagicShape, Motion, Stamp};
 pub use magic_mouse::{MagicMouseHid, Model};
-pub use surface::{ButtonZones, DeviceClock, Extent, SizeMm, Surface};
+pub use surface::{Extent, SizeMm, Surface};
 pub use units::{Mm, MmPoint, MmRange, Resolution, UnitsPerMm};
 
 use crate::sensor::magic_mouse::decode::DecodeError;

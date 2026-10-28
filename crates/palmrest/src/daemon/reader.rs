@@ -1,10 +1,10 @@
 //! The reader thread: the sensor's node in, tracker, outputs out (12.3.12). One loop, no async
 //! runtime.
 
-use super::devices::{Devices, Health};
+use super::devices::Devices;
 use super::discover::Backoff;
 use super::dispatch::dispatch;
-use super::hidraw::{self, Read};
+use super::hidraw;
 use super::socket::{FromSocket, SocketHandle, ToSocket};
 use super::source::{self, Opened, Purpose};
 use crate::action::Desktop;
@@ -73,7 +73,7 @@ impl Reader {
                 .deadline()
                 .map_or(IDLE_POLL, |d| d.since(now).min(IDLE_POLL));
             match hidraw::read_up_to(&opened.fd, timeout, opened.read_len()) {
-                Read::Report(bytes) => {
+                Ok(Some(bytes)) => {
                     errors = 0;
                     let record = Record {
                         at: hidraw::now(),
@@ -92,8 +92,8 @@ impl Reader {
                     }
                     self = Self { tracker: t, ..self }.emit(step.outs);
                 }
-                Read::Timeout => self = self.with_tracker(|t| t.tick(hidraw::now())),
-                Read::Failed(e) => {
+                Ok(None) => self = self.with_tracker(|t| t.tick(hidraw::now())),
+                Err(e) => {
                     errors += 1;
                     eprintln!("palmrest: read failed ({errors}): {e}");
                     std::thread::sleep(IDLE_POLL);
@@ -152,12 +152,13 @@ impl Reader {
 
     fn emit(mut self, outs: Vec<Out>) -> Self {
         dispatch(outs, &self.socket, &mut self.devices, self.desktop);
-        match self.devices.take_health() {
-            Health::Fine => self,
-            Health::LostDevices => Self {
+        if self.devices.take_lost() {
+            Self {
                 tracker: self.tracker.devices_lost(),
                 ..self
-            },
+            }
+        } else {
+            self
         }
     }
 }

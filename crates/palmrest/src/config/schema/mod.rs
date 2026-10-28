@@ -21,14 +21,6 @@ const FILE: &str = "palmrest/gestures.toml";
 /// The schema file format's version (quire design/22 section 9.2).
 const VERSION: u16 = 1;
 
-/// Whether the Settings app draws a key on its page or under its "Advanced" disclosure; every
-/// palmrest key is on the page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub(super) enum Exposure {
-    Basic,
-}
-
 /// A key's shape: what values it holds. Serialises as quire's `KeyKind`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "kind", content = "v", rename_all = "snake_case")]
@@ -60,12 +52,19 @@ impl Kind {
     }
 }
 
-/// The page every palmrest key is on.
+/// Whether the Settings app draws a key on its page or under its "Advanced" disclosure; every
+/// palmrest key is on the page.
+const EXPOSURE: &str = "basic";
+
+/// The page every palmrest key is on, as quire's `Page` writes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(tag = "kind", content = "v", rename_all = "snake_case")]
-enum Page {
-    MouseAndGestures,
+struct Page {
+    kind: &'static str,
 }
+
+const PAGE: Page = Page {
+    kind: "mouse_and_gestures",
+};
 
 /// One key, as quire's `KeySpec` writes it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -75,7 +74,7 @@ pub(super) struct KeySpec {
     pub label: String,
     pub help: String,
     pub section: String,
-    pub exposure: Exposure,
+    pub exposure: &'static str,
     pub kind: Kind,
     page: Page,
     /// A human label per word of a choice, by stored word; omitted when the key has none.

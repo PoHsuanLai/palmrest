@@ -22,29 +22,18 @@ const MAX_MOVE: (Um, Um) = (Um(1538), Um(571));
 /// The second tap lands this close to the first (an ellipse: sideways, lengthways).
 const CENTROID_MAX: (Um, Um) = (Um(11538), Um(4286));
 
-/// Whether a touchdown can still be a tap.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Validity {
-    Valid,
-    Void,
-}
-
 /// A touchdown in progress.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Touchdown {
     since: Mono,
     peak: usize,
     count: usize,
-    shrunk: Shrunk,
+    /// Whether a finger has lifted since landing.
+    shrunk: bool,
     origins: Vec<Sample>,
     centroid: Point,
-    validity: Validity,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Shrunk {
-    No,
-    Yes,
+    /// Whether this touchdown can still be a tap.
+    valid: bool,
 }
 
 /// A completed first tap waiting for its second.
@@ -133,22 +122,18 @@ impl Touchdown {
             since: now,
             peak: contacts.len(),
             count: contacts.len(),
-            shrunk: Shrunk::No,
+            shrunk: false,
             origins: contacts.to_vec(),
             centroid: centroid(contacts),
-            validity: if hold == Hold::Held {
-                Validity::Void
-            } else {
-                Validity::Valid
-            },
+            valid: hold != Hold::Held,
         }
     }
 
     fn update(mut self, contacts: &[Sample], now: Mono, hold: Hold) -> Self {
         let n = contacts.len();
-        let regrew = self.shrunk == Shrunk::Yes && n > self.count;
+        let regrew = self.shrunk && n > self.count;
         if n < self.count {
-            self.shrunk = Shrunk::Yes;
+            self.shrunk = true;
         }
         for c in contacts {
             if !self.origins.iter().any(|o| o.id == c.id) {
@@ -171,15 +156,13 @@ impl Touchdown {
         });
         let late = now.since(self.since) > MAX.duration();
         if moved || late || regrew || hold == Hold::Held || self.peak > 2 {
-            self.validity = Validity::Void;
+            self.valid = false;
         }
         self
     }
 
     fn is_tap(&self, lift: Mono) -> bool {
-        self.validity == Validity::Valid
-            && (1..=2).contains(&self.peak)
-            && lift.since(self.since) <= MAX.duration()
+        self.valid && (1..=2).contains(&self.peak) && lift.since(self.since) <= MAX.duration()
     }
 }
 

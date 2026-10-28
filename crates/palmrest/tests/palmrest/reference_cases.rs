@@ -3,7 +3,7 @@
 //! frozen from the retired Python daemon's test suite; points are in its unsigned reading.
 
 use palmrest::Mono;
-use palmrest::action::{Action, Desktop, Effect, plan};
+use palmrest::action::{Action, Desktop, Gesture, plan};
 use palmrest::config::Config;
 use palmrest::feel::{AxisLock, Hold, LockEvent, LockParams, Sample, Threshold};
 use palmrest::gestures::{FingerDirection, SwipeEvent, SwipeG};
@@ -207,17 +207,17 @@ fn two_finger_swipe_right_switches_desktop_left() {
     with_lift.push((11_000, vec![]));
     assert_eq!(swipe_run(&with_lift), [FingerDirection::Right]);
     // Fingers right: the desktop on the left; fingers left: the one on the right.
-    let kwin = |a: &Action| match plan(&a.deferred().unwrap(), Desktop::Kde) {
-        Effect::Host(HostAction::Command { argv }) => argv.last().cloned().unwrap(),
+    let kwin = |a: &Action| match plan(a, Desktop::Kde) {
+        Some(HostAction::Command { argv }) => argv.last().cloned().unwrap(),
         other => panic!("{other:?}"),
     };
     let map = Config::default().gestures.gesture_action_map;
     assert_eq!(
-        kwin(&map.two_finger_swipe_right),
+        kwin(map.action_for(Gesture::TwoFingerSwipeRight)),
         "Switch One Desktop to the Left"
     );
     assert_eq!(
-        kwin(&map.two_finger_swipe_left),
+        kwin(map.action_for(Gesture::TwoFingerSwipeLeft)),
         "Switch One Desktop to the Right"
     );
 }

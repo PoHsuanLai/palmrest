@@ -5,38 +5,25 @@ use crate::outputs::events::{
     ABS_MT_POSITION_X, ABS_MT_POSITION_Y, ABS_MT_SLOT, ABS_MT_TRACKING_ID, BTN_LEFT, EV_ABS,
     EV_KEY, EV_REL, EV_SYN, SYN_REPORT,
 };
-use crate::sensor::frame::{Buttons, Frame, FrameContact, FrameStamp, Motion, Shape};
+use crate::sensor::frame::{Buttons, Frame, FrameContact, Motion, Stamp};
 use crate::sensor::units::Resolution;
 use crate::touch::{TouchId, TouchState};
-
-/// Whether a slot holds a contact.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Tracking {
-    Lifted,
-    Live(i32),
-}
 
 /// One slot. The position outlives the contact: the kernel does not resend a value that did
 /// not change, even for a new contact in the same slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Slot {
-    tracking: Tracking,
+    /// The tracking id of the contact the slot holds; `None` once it lifted.
+    tracking: Option<i32>,
     x: i32,
     y: i32,
 }
 
 const EMPTY: Slot = Slot {
-    tracking: Tracking::Lifted,
+    tracking: None,
     x: 0,
     y: 0,
 };
-
-/// Whether events are being dropped until the next `SYN_REPORT` (after `SYN_DROPPED`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Sync {
-    InStep,
-    Dropping,
-}
 
 /// Everything between two `SYN_REPORT`s.
 #[derive(Debug, Clone, PartialEq)]
@@ -46,7 +33,8 @@ pub struct Slots {
     current: Option<usize>,
     buttons: Buttons,
     motion: Motion,
-    sync: Sync,
+    /// Events are being dropped until the next `SYN_REPORT` (after `SYN_DROPPED`).
+    dropping: bool,
 }
 
 impl Slots {
@@ -56,27 +44,27 @@ impl Slots {
             current: Some(0),
             buttons: Buttons::NONE,
             motion: Motion::default(),
-            sync: Sync::InStep,
+            dropping: false,
         }
     }
 
     /// Applies one event; a `SYN_REPORT` completes a frame.
     pub fn apply(self, e: &TimedEvent, res: Resolution) -> (Self, Option<Frame>) {
         let ev = e.event;
-        match (self.sync, ev.kind, ev.code) {
+        match (self.dropping, ev.kind, ev.code) {
             (_, EV_SYN, SYN_DROPPED) => (
                 Self {
-                    sync: Sync::Dropping,
+                    dropping: true,
                     ..self
                 },
                 None,
             ),
-            (Sync::Dropping, EV_SYN, SYN_REPORT) => (self.resynced(), None),
-            (Sync::InStep, EV_SYN, SYN_REPORT) => self.frame(e, res),
-            (Sync::InStep, EV_ABS, code) => (self.abs(code, ev.value), None),
-            (Sync::InStep, EV_KEY, code) => (self.key(code, ev.value), None),
-            (Sync::InStep, EV_REL, code) => (self.rel(code, ev.value), None),
-            (Sync::Dropping | Sync::InStep, _, _) => (self, None),
+            (true, EV_SYN, SYN_REPORT) => (self.resynced(), None),
+            (false, EV_SYN, SYN_REPORT) => self.frame(e, res),
+            (false, EV_ABS, code) => (self.abs(code, ev.value), None),
+            (false, EV_KEY, code) => (self.key(code, ev.value), None),
+            (false, EV_REL, code) => (self.rel(code, ev.value), None),
+            _ => (self, None),
         }
     }
 
@@ -86,14 +74,14 @@ impl Slots {
             .slots
             .iter()
             .map(|s| Slot {
-                tracking: Tracking::Lifted,
+                tracking: None,
                 ..*s
             })
             .collect();
         Self {
             slots,
             motion: Motion::default(),
-            sync: Sync::InStep,
+            dropping: false,
             ..self
         }
     }
@@ -109,8 +97,8 @@ impl Slots {
             return self;
         };
         match code {
-            ABS_MT_TRACKING_ID if value < 0 => slot.tracking = Tracking::Lifted,
-            ABS_MT_TRACKING_ID => slot.tracking = Tracking::Live(value),
+            ABS_MT_TRACKING_ID if value < 0 => slot.tracking = None,
+            ABS_MT_TRACKING_ID => slot.tracking = Some(value),
             ABS_MT_POSITION_X => slot.x = value,
             ABS_MT_POSITION_Y => slot.y = value,
             _ => {}
@@ -149,21 +137,20 @@ impl Slots {
         let contacts = self
             .slots
             .iter()
-            .filter_map(|s| match s.tracking {
-                Tracking::Live(id) => Some(FrameContact {
+            .filter_map(|s| {
+                s.tracking.map(|id| FrameContact {
                     id: TouchId((id & 0xff) as u8),
                     at: res.point(s.x, s.y),
                     state: TouchState::Touching,
-                    shape: Shape::Unmeasured,
-                }),
-                Tracking::Lifted => None,
+                    shape: None,
+                })
             })
             .collect();
         let frame = Frame {
             buttons: self.buttons,
             motion: self.motion,
             contacts,
-            stamp: FrameStamp::Kernel(e.at),
+            stamp: Some(Stamp::Kernel(e.at)),
         };
         (
             Self {

@@ -16,6 +16,7 @@ use super::surface::Surface;
 use super::units::{Mm, MmPoint, Resolution, UnitsPerMm};
 use crate::config::Um;
 use crate::touch::Point;
+use palmrest_protocol::Axis;
 
 /// The grid: the Magic Mouse 2's resolution, as its kernel driver reports it
 /// (`ABS_MT_POSITION_X/Y` resolution 26 and 70, read with EVIOCGABS on the device).
@@ -24,19 +25,11 @@ pub const REFERENCE: Resolution = Resolution {
     y: UnitsPerMm(70.0),
 };
 
-/// Which axis a length is measured along.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Along {
-    X,
-    Y,
-}
-
-impl Along {
-    fn per_mm(self) -> UnitsPerMm {
-        match self {
-            Along::X => REFERENCE.x,
-            Along::Y => REFERENCE.y,
-        }
+/// The grid's resolution along `axis`.
+fn per_mm(axis: Axis) -> UnitsPerMm {
+    match axis {
+        Axis::X => REFERENCE.x,
+        Axis::Y => REFERENCE.y,
     }
 }
 
@@ -46,8 +39,8 @@ pub fn point(at: MmPoint) -> Point {
 }
 
 /// A configured length on the grid along `axis`, rounded to the nearest unit.
-pub fn units(um: Um, axis: Along) -> i32 {
-    axis.per_mm().units(Mm(f64::from(um.0) / 1000.0))
+pub fn units(um: Um, axis: Axis) -> i32 {
+    per_mm(axis).units(Mm(f64::from(um.0) / 1000.0))
 }
 
 /// The surface's edges on the grid.
@@ -82,8 +75,8 @@ impl Ellipse {
     /// The ellipse of two configured radii.
     pub fn of(x: Um, y: Um) -> Self {
         Self {
-            x: units(x, Along::X),
-            y: units(y, Along::Y),
+            x: units(x, Axis::X),
+            y: units(y, Axis::Y),
         }
     }
 
@@ -116,9 +109,9 @@ mod tests {
 
     #[test]
     fn micrometres_round_trip_on_both_axes() {
-        for axis in [Along::X, Along::Y] {
+        for axis in [Axis::X, Axis::Y] {
             for u in -5000..=5000 {
-                let um = Um((axis.per_mm().mm(u).0 * 1000.0).round() as i32);
+                let um = Um((per_mm(axis).mm(u).0 * 1000.0).round() as i32);
                 assert_eq!(units(um, axis), u, "{u} {axis:?}");
             }
         }

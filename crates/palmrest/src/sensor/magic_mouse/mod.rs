@@ -10,11 +10,11 @@ pub mod encode;
 pub mod known;
 pub mod report;
 
-pub use known::{Bus, KNOWN, KnownDevice, Layout, Model, Support, known};
+pub use known::{Bus, KNOWN, KnownDevice, Model, known};
 
 use super::SensorError;
-use super::frame::{Frame, FrameContact, MagicShape, Shape};
-use super::surface::{ButtonZones, DeviceClock, Extent, Surface};
+use super::frame::{Frame, FrameContact, MagicShape};
+use super::surface::{Extent, Surface};
 use super::units::{MmRange, Resolution, UnitsPerMm};
 use crate::touch::RawTouch;
 use report::Report;
@@ -41,8 +41,6 @@ pub fn surface() -> Surface {
             y: range(RESOLUTION.y, Y_RANGE),
         },
         resolution: RESOLUTION,
-        buttons: ButtonZones::SplitLeftRight,
-        clock: DeviceClock::Ticks18,
     }
 }
 
@@ -97,7 +95,7 @@ fn contact(t: &RawTouch) -> FrameContact {
         id: t.id,
         at: RESOLUTION.point(t.at.x, t.at.y),
         state: t.state,
-        shape: Shape::MagicMouse(MagicShape {
+        shape: Some(MagicShape {
             major: t.major,
             minor: t.minor,
             size: t.size,

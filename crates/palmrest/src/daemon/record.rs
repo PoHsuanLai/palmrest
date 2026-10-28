@@ -4,7 +4,7 @@
 //! Opens the node read-only: it only listens, exactly as the kernel and any other reader do,
 //! and sends nothing to the mouse.
 
-use super::hidraw::{self, Read};
+use super::hidraw;
 use super::source::{self, Purpose};
 use crate::error::Error;
 use crate::recording::{Record, encode_record, header};
@@ -60,13 +60,13 @@ pub fn record(out: &Path, limits: Limits) -> Result<usize, Error> {
             break;
         }
         match hidraw::read_up_to(&opened.fd, Duration::from_millis(100), opened.read_len()) {
-            Read::Report(bytes) => {
+            Ok(Some(bytes)) => {
                 last = hidraw::now();
                 file.write_all(&encode_record(&Record { at: last, bytes }))?;
                 count += 1;
             }
-            Read::Timeout => {}
-            Read::Failed(e) => return Err(Error::Read(e)),
+            Ok(None) => {}
+            Err(e) => return Err(Error::Read(e)),
         }
     }
     file.flush()?;

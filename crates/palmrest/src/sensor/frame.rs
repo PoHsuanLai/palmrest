@@ -28,15 +28,14 @@ pub struct Motion {
     pub dy: i16,
 }
 
-/// A frame's own time, if it has one (see `Surface::clock`).
+/// A frame's own time. A frame without one is stamped `None`: the arrival time stands in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum FrameStamp {
-    /// The Magic Mouse's 18-bit counter.
+pub enum Stamp {
+    /// The Magic Mouse's 18-bit counter, of unpublished unit, fitted onto the monotonic clock
+    /// (`stamp::StampClock`).
     Ticks(u32),
-    /// A kernel timestamp on `CLOCK_MONOTONIC`.
+    /// A kernel timestamp on `CLOCK_MONOTONIC` (evdev's `SYN_REPORT` time).
     Kernel(Mono),
-    /// None: the arrival time stands in.
-    Absent,
 }
 
 /// The Magic Mouse's own description of a contact, in its unpublished units. P1 (light touch)
@@ -50,18 +49,6 @@ pub struct MagicShape {
     pub orientation: i8,
 }
 
-/// What a sensor knows about a contact's shape.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Shape {
-    MagicMouse(MagicShape),
-    /// Nothing usable: the contact is treated as a firm, finger-sized touch, so P1 and P3 do not
-    /// apply to it.
-    // TODO(untested): an evdev node whose ABS_MT_TOUCH_MAJOR has a resolution could give P3 a
-    // major axis in mm; the Magic Mouse's kernel driver exposes major << 2 with no resolution,
-    // so no scale is known and none is guessed.
-    Unmeasured,
-}
-
 /// One contact of a frame.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct FrameContact {
@@ -70,7 +57,12 @@ pub struct FrameContact {
     pub at: MmPoint,
     /// The Magic Mouse's MTTouch state; `Touching` for sensors that only report contacts.
     pub state: TouchState,
-    pub shape: Shape,
+    /// `None`: nothing usable, and the contact is treated as a firm, finger-sized touch, so P1
+    /// and P3 do not apply to it.
+    // TODO(untested): an evdev node whose ABS_MT_TOUCH_MAJOR has a resolution could give P3 a
+    // major axis in mm; the Magic Mouse's kernel driver exposes major << 2 with no resolution,
+    // so no scale is known and none is guessed.
+    pub shape: Option<MagicShape>,
 }
 
 /// Everything a sensor reported at one instant.
@@ -79,17 +71,5 @@ pub struct Frame {
     pub buttons: Buttons,
     pub motion: Motion,
     pub contacts: Vec<FrameContact>,
-    pub stamp: FrameStamp,
-}
-
-impl Frame {
-    /// No contacts, nothing pressed, no motion.
-    pub fn empty(stamp: FrameStamp) -> Self {
-        Self {
-            buttons: Buttons::NONE,
-            motion: Motion::default(),
-            contacts: Vec::new(),
-            stamp,
-        }
-    }
+    pub stamp: Option<Stamp>,
 }

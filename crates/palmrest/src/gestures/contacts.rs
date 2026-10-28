@@ -6,19 +6,12 @@ mod rejection;
 
 use super::bands::Bands;
 use crate::feel::Sample;
+use crate::sensor::FrameContact;
 use crate::sensor::lattice;
-use crate::sensor::{FrameContact, Shape};
 use crate::time::Mono;
 use crate::touch::TouchId;
 pub use rejection::Contact;
 use rejection::{Touch, Track, advance, land};
-
-/// Whether a contact of the running set turned Palm this report (it cancels the scroll).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PalmTurn {
-    None,
-    InSet,
-}
 
 /// Every live track and the contact set of the previous report.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -27,22 +20,19 @@ pub struct Contacts {
     set: Vec<TouchId>,
 }
 
-/// One report's view: the contacts the gestures see, in report order, and any palm turn.
+/// One report's view: the contacts the gestures see, in report order, and whether a contact of
+/// the running set turned Palm this report (it cancels the scroll).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Seen {
     pub samples: Vec<Sample>,
-    pub palm: PalmTurn,
+    pub palm_turned: bool,
 }
 
 /// Whether the frame's state makes this touch a contact at all (12.3.2): a state nibble from
 /// 1 to 4 (in range, making touch or touching), and on the Magic Mouse a non-zero size.
 pub fn is_contact(t: &FrameContact) -> bool {
     let counted = (1..=4).contains(&t.state.nibble());
-    let sized = match t.shape {
-        Shape::MagicMouse(m) => m.size > 0,
-        Shape::Unmeasured => true,
-    };
-    counted && sized
+    counted && t.shape.is_none_or(|m| m.size > 0)
 }
 
 impl Contacts {
@@ -79,17 +69,18 @@ impl Contacts {
             .filter(|k| counted(k))
             .map(|k| Sample { id: k.id, at: k.at })
             .collect();
-        let palm = if tracks
+        let palm_turned = tracks
             .iter()
-            .any(|k| k.class == Contact::Palm && self.set.contains(&k.id))
-        {
-            PalmTurn::InSet
-        } else {
-            PalmTurn::None
-        };
+            .any(|k| k.class == Contact::Palm && self.set.contains(&k.id));
         let mut set: Vec<TouchId> = samples.iter().map(|s| s.id).collect();
         set.sort();
-        (Self { tracks, set }, Seen { samples, palm })
+        (
+            Self { tracks, set },
+            Seen {
+                samples,
+                palm_turned,
+            },
+        )
     }
 }
 

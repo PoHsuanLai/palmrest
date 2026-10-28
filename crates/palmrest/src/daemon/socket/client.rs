@@ -16,13 +16,6 @@ use rustix::net::{RecvFlags, SendFlags};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct ClientId(pub(super) u64);
 
-/// Whether a subscriber is still connected after something was done to it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Link {
-    Alive,
-    Gone,
-}
-
 #[derive(Debug)]
 pub(super) struct Client {
     pub(super) id: ClientId,
@@ -57,18 +50,14 @@ impl Client {
         &self.fd
     }
 
-    /// Sends `m` if this subscriber's filter admits it. `Gone` if the subscriber is; a full
+    /// Sends `m` if this subscriber's filter admits it. False if the subscriber is gone; a full
     /// queue drops the message only.
-    pub(super) fn deliver(&self, m: &ToHost) -> Link {
-        if self.filter.admits(m) {
-            send(&self.fd, m)
-        } else {
-            Link::Alive
-        }
+    pub(super) fn deliver(&self, m: &ToHost) -> bool {
+        !self.filter.admits(m) || send(&self.fd, m)
     }
 
-    /// Sends `m` whatever the filter says (the greeting).
-    pub(super) fn greet(&self, m: &ToHost) -> Link {
+    /// Sends `m` whatever the filter says (the greeting). False if the subscriber is gone.
+    pub(super) fn greet(&self, m: &ToHost) -> bool {
         send(&self.fd, m)
     }
 
@@ -101,20 +90,20 @@ impl Client {
     }
 
     /// Reads at most `PACKETS_PER_PASS` packets and applies them, as `active`'s seat makes this
-    /// subscriber's word count. `Gone` when the subscriber closed or reading failed; what is still
+    /// subscriber's word count. False when the subscriber closed or reading failed; what is still
     /// queued is read next pass, as `poll` reports it.
-    pub(super) fn pull(&mut self, active: Option<u32>) -> Link {
+    pub(super) fn pull(&mut self, active: Option<u32>) -> bool {
         let mut buf = [0u8; protocol::MAX_PACKET + 1];
         for _ in 0..PACKETS_PER_PASS {
             match rustix::net::recv(&self.fd, &mut buf, RecvFlags::DONTWAIT) {
-                Ok((0, _)) => return Link::Gone,
+                Ok((0, _)) => return false,
                 Ok((n, _)) => self.apply(&buf[..n], self.peer(active)),
-                Err(Errno::AGAIN) => return Link::Alive,
+                Err(Errno::AGAIN) => return true,
                 Err(Errno::INTR) => {}
-                Err(_) => return Link::Gone,
+                Err(_) => return false,
             }
         }
-        Link::Alive
+        true
     }
 
     /// What a subscriber's message does. Anyone served may subscribe and may say the session is
@@ -148,13 +137,14 @@ impl Client {
     }
 }
 
-fn send(fd: &OwnedFd, m: &ToHost) -> Link {
+/// Whether the subscriber is still connected after `m` was sent.
+fn send(fd: &OwnedFd, m: &ToHost) -> bool {
     match rustix::net::send(
         fd.as_fd(),
         &protocol::encode(m),
         SendFlags::DONTWAIT | SendFlags::NOSIGNAL,
     ) {
-        Ok(_) | Err(Errno::AGAIN) => Link::Alive,
-        Err(_) => Link::Gone,
+        Ok(_) | Err(Errno::AGAIN) => true,
+        Err(_) => false,
     }
 }

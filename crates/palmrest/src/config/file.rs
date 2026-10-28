@@ -49,7 +49,7 @@ pub fn to_toml(c: &Config) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::action::Action;
+    use crate::action::{Action, Gesture};
     use crate::config::units::Count;
 
     #[test]
@@ -69,8 +69,10 @@ mod tests {
         let (c, warn) = parse(text).unwrap();
         assert_eq!(c.scroll.speed, Count(22));
         assert_eq!(
-            c.gestures.gesture_action_map.one_finger_double_tap,
-            Action::Back
+            c.gestures
+                .gesture_action_map
+                .action_for(Gesture::OneFingerDoubleTap),
+            &Action::Back
         );
         let keys: Vec<&str> = warn.iter().map(|w| w.key.as_str()).collect();
         assert_eq!(keys, ["scroll.speed"]);

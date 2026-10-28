@@ -2,7 +2,7 @@
 //! are keys or are asked of the shell.
 
 use super::socket::{SocketHandle, ToSocket};
-use crate::action::{Desktop, Effect, plan};
+use crate::action::{Desktop, plan};
 use crate::outputs::Emitter;
 use crate::tracker::Out;
 
@@ -22,13 +22,12 @@ pub fn dispatch(
             }
             Out::Pad(f) => emitter.pad(f),
             Out::Key(k) => emitter.key(k),
-            Out::Deferred(d) => match plan(d, desktop) {
-                Effect::Host(action) => {
-                    socket.send(ToSocket::Run(action));
-                    Ok(())
+            Out::Deferred(action) => {
+                if let Some(host) = plan(action, desktop) {
+                    socket.send(ToSocket::Run(host));
                 }
-                Effect::Nothing => Ok(()),
-            },
+                Ok(())
+            }
         };
         if let Err(e) = result {
             eprintln!("palmrest: output failed: {e}");

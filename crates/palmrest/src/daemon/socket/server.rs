@@ -2,11 +2,11 @@
 //! then accepts, delivers what the reader queued, reads what subscribers said and publishes their joint state. Every step
 //! is bounded, so no subscriber can keep the others, or the reader's stream, waiting.
 
-use super::client::{Client, ClientId, Link};
-use super::limits::{ACCEPTS_PER_PASS, Complaints, Intake, MAX_CLIENTS, SEAT_RECHECK};
+use super::client::{Client, ClientId};
+use super::limits::{ACCEPTS_PER_PASS, Complaints, MAX_CLIENTS, SEAT_RECHECK};
 use super::seat::{Peer, peer_of};
 use super::{FromSocket, ToSocket, aggregate, aggregate_lock};
-use latchkey::guard::{AcceptFailure, SeatFile, Voice, Vouch, accept_failure};
+use latchkey::guard::{ACCEPT_PAUSE, AcceptFailure, SeatFile, Voice, Vouch, accept_failure};
 use palmrest_protocol::{DeviceInfo, HostAction, LockState, Over, PROTOCOL_VERSION, ToHost};
 use rustix::event::{PollFd, PollFlags, Timespec, poll};
 use rustix::fd::OwnedFd;
@@ -25,35 +25,16 @@ pub(super) enum Exit {
     PollFailed,
 }
 
-/// What a pass leaves to do.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Flow {
-    Continue,
-    Stop(Exit),
-}
-
 /// Whether poll found a descriptor ready.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Readiness {
-    Quiet,
-    Readable,
+fn readable(fd: &PollFd<'_>) -> bool {
+    !fd.revents().is_empty()
 }
 
-impl Readiness {
-    fn of(fd: &PollFd<'_>) -> Self {
-        if fd.revents().is_empty() {
-            Readiness::Quiet
-        } else {
-            Readiness::Readable
-        }
-    }
-}
-
-/// What a poll found: the wake-up and listener, and the subscribers that have something to
-/// read or have hung up, by id.
+/// What a poll found: whether the wake-up and the listener are ready, and the subscribers that
+/// have something to read or have hung up, by id.
 struct Ready {
-    listener: Readiness,
-    wake: Readiness,
+    listener: bool,
+    wake: bool,
     clients: Vec<ClientId>,
 }
 
@@ -63,8 +44,9 @@ pub(super) struct Server {
     rx: Receiver<ToSocket>,
     clients: Vec<Client>,
     next_client: u64,
-    /// Whether the listener is polled: not while `accept` is failing for want of descriptors.
-    intake: Intake,
+    /// While set, the listener is not polled until then: `accept` is failing for want of
+    /// descriptors.
+    paused_until: Option<Instant>,
     complaints: Complaints,
     device: Option<DeviceInfo>,
     notes: Sender<FromSocket>,
@@ -97,7 +79,7 @@ impl Server {
             rx,
             clients: Vec::new(),
             next_client: 0,
-            intake: Intake::Open,
+            paused_until: None,
             complaints: Complaints::default(),
             device: None,
             notes,
@@ -115,37 +97,38 @@ impl Server {
 
     pub(super) fn run(mut self) -> Exit {
         loop {
-            if let Flow::Stop(exit) = self.step() {
+            if let Some(exit) = self.step() {
                 return exit;
             }
         }
     }
 
-    /// One pass: wait, accept, deliver, read, publish.
-    pub(super) fn step(&mut self) -> Flow {
-        self.intake = self.intake.at(Instant::now());
+    /// One pass: wait, accept, deliver, read, publish. `Some` when the loop must end.
+    pub(super) fn step(&mut self) -> Option<Exit> {
+        let now = Instant::now();
+        self.paused_until = self.paused_until.filter(|&until| until > now);
         let ready = match self.wait() {
             Ok(r) => r,
             Err(e) => {
                 eprintln!("palmrest: socket poll failed: {e}");
-                return Flow::Stop(Exit::PollFailed);
+                return Some(Exit::PollFailed);
             }
         };
         self.watch_seat();
-        if ready.listener == Readiness::Readable {
+        if ready.listener {
             self.accept();
         }
-        if ready.wake == Readiness::Readable && !self.drain() {
-            return Flow::Stop(Exit::ReaderGone);
+        if ready.wake && !self.drain() {
+            return Some(Exit::ReaderGone);
         }
         ready.clients.into_iter().for_each(|id| self.receive(id));
         self.publish();
-        Flow::Continue
+        None
     }
 
     fn wait(&self) -> Result<Ready, Errno> {
         let mut fds = vec![PollFd::new(&*self.wake, PollFlags::IN)];
-        let listener_slot = (self.intake == Intake::Open).then(|| {
+        let listener_slot = self.paused_until.is_none().then(|| {
             fds.push(PollFd::new(&self.listener, PollFlags::IN));
             fds.len() - 1
         });
@@ -156,23 +139,23 @@ impl Server {
                 .map(|c| PollFd::new(c.fd(), PollFlags::IN)),
         );
         // Never asleep for longer than the seat recheck: a user switch with no traffic is noticed.
-        let timeout = Some(timespec(
-            self.intake
-                .sleep(Instant::now())
-                .map_or(SEAT_RECHECK, |pause| pause.min(SEAT_RECHECK)),
-        ));
+        let timeout = Some(timespec(self.paused_until.map_or(SEAT_RECHECK, |until| {
+            until
+                .saturating_duration_since(Instant::now())
+                .min(SEAT_RECHECK)
+        })));
         match poll(&mut fds, timeout.as_ref()) {
             Ok(_) | Err(Errno::INTR) => {}
             Err(e) => return Err(e),
         }
         Ok(Ready {
-            listener: listener_slot.map_or(Readiness::Quiet, |slot| Readiness::of(&fds[slot])),
-            wake: Readiness::of(&fds[0]),
+            listener: listener_slot.is_some_and(|slot| readable(&fds[slot])),
+            wake: readable(&fds[0]),
             clients: self
                 .clients
                 .iter()
                 .zip(&fds[first_client..])
-                .filter(|(_, f)| Readiness::of(f) == Readiness::Readable)
+                .filter(|(_, f)| readable(f))
                 .map(|(c, _)| c.id)
                 .collect(),
         })
@@ -194,7 +177,7 @@ impl Server {
                     AcceptFailure::Retry => {}
                     AcceptFailure::Pause => {
                         eprintln!("palmrest: accept failed: {e}; not accepting for a moment");
-                        self.intake = Intake::paused_at(Instant::now());
+                        self.paused_until = Some(Instant::now() + ACCEPT_PAUSE);
                         return;
                     }
                 },
@@ -255,8 +238,8 @@ impl Server {
                 product: 0,
             }),
         };
-        let alive = client.greet(&hello) == Link::Alive
-            && (self.device.is_some() || client.greet(&ToHost::DeviceGone) == Link::Alive);
+        let alive =
+            client.greet(&hello) && (self.device.is_some() || client.greet(&ToHost::DeviceGone));
         if alive {
             self.clients.push(client);
         }
@@ -295,7 +278,7 @@ impl Server {
                 return true;
             }
             asked += 1;
-            c.greet(&message) == Link::Alive
+            c.greet(&message)
         });
         if asked == 0 {
             eprintln!("palmrest: a gesture's action was dropped: no shell is connected");
@@ -303,7 +286,7 @@ impl Server {
     }
 
     fn broadcast(&mut self, m: &ToHost) {
-        self.clients.retain(|c| c.deliver(m) == Link::Alive);
+        self.clients.retain(|c| c.deliver(m));
     }
 
     /// Reads what subscriber `id` sent. The subscriber may have left since the poll (a failed
@@ -316,9 +299,9 @@ impl Server {
             .iter_mut()
             .find(|c| c.id == id)
             .is_some_and(|c| {
-                let link = c.pull(active);
+                let connected = c.pull(active);
                 sent = c.take_user_config();
-                link == Link::Gone
+                !connected
             });
         if let Some(text) = sent {
             // Blank text takes the layer away.

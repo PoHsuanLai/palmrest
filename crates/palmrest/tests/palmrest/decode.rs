@@ -1,7 +1,7 @@
 //! Acceptance 12.8 item 1: decoder goldens.
 
 use palmrest::sensor::magic_mouse::decode::{DecodeError, decode};
-use palmrest::sensor::magic_mouse::report::{Buttons, FrameStamp, Motion, Report};
+use palmrest::sensor::magic_mouse::report::{Buttons, Motion, Report, Stamp};
 use palmrest::touch::{Point, RawTouch, TouchId, TouchState, wrap_delta};
 
 fn one(name: &str) -> Result<Vec<Report>, DecodeError> {
@@ -42,7 +42,7 @@ fn header(touches: Vec<RawTouch>) -> Report {
     Report {
         buttons: Buttons::LEFT,
         motion: Motion { dx: 5, dy: -3 },
-        stamp: FrameStamp::Ticks(3147),
+        stamp: Some(Stamp::Ticks(3147)),
         touches,
     }
 }
@@ -59,7 +59,7 @@ fn goldens_decode_to_exact_fields_or_errors() {
             Ok(vec![Report {
                 buttons: Buttons::RIGHT,
                 motion: Motion { dx: -1, dy: 1 },
-                stamp: FrameStamp::Absent,
+                stamp: None,
                 touches: vec![],
             }]),
         ),

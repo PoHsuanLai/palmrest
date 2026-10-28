@@ -1,13 +1,13 @@
 //! What the tracker asks the daemon to do, and how a fired gesture becomes outputs.
 
-use crate::action::{Action, Deferred, Gesture, key_of};
+use crate::action::{Action, key_of};
 use crate::keys::KeyCombo;
 use crate::outputs::pad::PadFrame;
 use palmrest_protocol::{LockState, Over, TapKind, ToHost};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 
 /// One effect of a report, in the order it must happen.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "v", rename_all = "snake_case")]
 pub enum Out {
     /// A socket message for every subscriber (O1).
@@ -18,7 +18,7 @@ pub enum Out {
     Key(KeyCombo),
     /// What a gesture asks of the person's session, which the daemon plans for the desktop it
     /// runs under (`action::plan`).
-    Deferred(Deferred),
+    Deferred(Action),
 }
 
 /// Who asked for an action: G4 is suppressed differently from the rest.
@@ -38,7 +38,8 @@ pub fn action_outs(action: &Action, source: Source, claimed: Over) -> Vec<Out> {
     }
     match key_of(action) {
         Some(k) => vec![Out::Key(k)],
-        None => action.deferred().map(Out::Deferred).into_iter().collect(),
+        None if action.asks_session() => vec![Out::Deferred(action.clone())],
+        None => vec![],
     }
 }
 
@@ -60,14 +61,6 @@ pub fn while_unlocked(session: LockState, outs: Vec<Out>) -> Vec<Out> {
             .into_iter()
             .filter(|o| !matches!(o, Out::Key(_) | Out::Deferred(_)))
             .collect(),
-    }
-}
-
-/// The gesture for a double-tap kind.
-pub fn tap_gesture(kind: TapKind) -> Gesture {
-    match kind {
-        TapKind::One => Gesture::OneFingerDoubleTap,
-        TapKind::Two => Gesture::TwoFingerDoubleTap,
     }
 }
 
@@ -97,7 +90,7 @@ mod tests {
         let outs = vec![
             Out::Host(ToHost::DeviceGone),
             Out::Key(KeyCombo::alt(Key::LEFT)),
-            Out::Deferred(Deferred::Workspace(Workspace::Overview)),
+            Out::Deferred(Action::Workspace(Workspace::Overview)),
         ];
         assert_eq!(while_unlocked(LockState::Unlocked, outs.clone()), outs);
         assert_eq!(
@@ -117,10 +110,10 @@ mod tests {
                 t_ns: 5
             })]
         );
-        let o = Action::WorkspaceOverview;
+        let o = Action::Workspace(Workspace::Overview);
         assert_eq!(
             tap_outs(TapKind::Two, &o, Over::NotOurs, 5),
-            vec![Out::Deferred(Deferred::Workspace(Workspace::Overview))]
+            vec![Out::Deferred(o)]
         );
     }
 }

@@ -15,28 +15,14 @@ use turnstile_client::{
 #[cfg(test)]
 mod tests;
 
-/// Frames the service had no room for, since the emitter was made.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-struct FramesLost(u64);
-
-impl FramesLost {
-    fn one_more(self) -> Self {
-        Self(self.0.saturating_add(1))
-    }
-
-    /// The 1st, 2nd, 4th, 8th... loss is worth a line in the log; the rest would only fill it.
-    fn worth_saying(self) -> bool {
-        self.0.is_power_of_two()
-    }
-}
-
 /// The devices of one daemon run.
 pub struct UinputEmitter<S: Session> {
     session: S,
     touchpad: DeviceId,
     keys: Option<DeviceId>,
     encoder: PadEncoder,
-    lost: FramesLost,
+    /// Frames the service had no room for, since the emitter was made.
+    lost: u64,
 }
 
 impl<S: Session> UinputEmitter<S> {
@@ -60,7 +46,7 @@ impl<S: Session> UinputEmitter<S> {
             touchpad,
             keys,
             encoder: PadEncoder::default(),
-            lost: FramesLost::default(),
+            lost: 0,
         })
     }
 
@@ -76,11 +62,13 @@ impl<S: Session> UinputEmitter<S> {
         match self.session.send(device, &batch) {
             Ok(Sent::Queued) => Ok(()),
             Ok(Sent::Dropped) => {
-                self.lost = self.lost.one_more();
-                if self.lost.worth_saying() {
+                self.lost = self.lost.saturating_add(1);
+                // The 1st, 2nd, 4th, 8th... loss is worth a line in the log; the rest would only
+                // fill it.
+                if self.lost.is_power_of_two() {
                     eprintln!(
                         "palmrest: the input service is behind; frames lost so far: {}",
-                        self.lost.0
+                        self.lost
                     );
                 }
                 Ok(())

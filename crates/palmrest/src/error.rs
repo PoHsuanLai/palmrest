@@ -45,7 +45,7 @@ pub enum Error {
     Write(#[from] io::Error),
     /// Reading the sensor failed while recording.
     #[error("{0}")]
-    Read(String),
+    Read(#[source] io::Error),
     /// A file is not a readable recording.
     #[error("{}: {source}", path.display())]
     Recording {

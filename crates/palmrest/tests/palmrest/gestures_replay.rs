@@ -2,7 +2,7 @@
 //! (rejection on, touchpad output): swipe trigger, double-taps, one-finger swipe, rejection,
 //! suppression.
 
-use palmrest::action::Deferred;
+use palmrest::action::Action;
 use palmrest::config::Config;
 use palmrest::keys::{Key, KeyCombo};
 use palmrest::replay::{Timing, feed, outs, replay};
@@ -44,7 +44,7 @@ fn run_from(mut t: Tracker, name: &str) -> Vec<Out> {
     all
 }
 
-fn actions(outs: &[Out]) -> Vec<Deferred> {
+fn actions(outs: &[Out]) -> Vec<Action> {
     outs.iter()
         .filter_map(|o| {
             if let Out::Deferred(a) = o {
@@ -85,15 +85,15 @@ fn taps(outs: &[Out]) -> Vec<TapKind> {
 
 #[test]
 fn swipe_trigger() {
-    const CASES: &[(&str, &[Deferred])] = &[
-        ("swipe_200_right", &[Deferred::Workspace(Workspace::Prev)]),
-        ("swipe_200_left", &[Deferred::Workspace(Workspace::Next)]),
+    const CASES: &[(&str, &[Action])] = &[
+        ("swipe_200_right", &[Action::Workspace(Workspace::Prev)]),
+        ("swipe_200_left", &[Action::Workspace(Workspace::Next)]),
         ("swipe_199", &[]),
         (
             "swipe_vertical_then_horizontal",
-            &[Deferred::Workspace(Workspace::Prev)],
+            &[Action::Workspace(Workspace::Prev)],
         ),
-        ("swipe_600_fast", &[Deferred::Workspace(Workspace::Prev)]),
+        ("swipe_600_fast", &[Action::Workspace(Workspace::Prev)]),
     ];
     for &(name, want) in CASES {
         assert_eq!(actions(&run(name)), want, "{name}");
@@ -135,11 +135,8 @@ fn a_two_finger_swipe_never_scrolls_sideways() {
 
 #[test]
 fn two_finger_double_tap() {
-    const CASES: &[(&str, &[Deferred])] = &[
-        (
-            "tap_two_double",
-            &[Deferred::Workspace(Workspace::Overview)],
-        ),
+    const CASES: &[(&str, &[Action])] = &[
+        ("tap_two_double", &[Action::Workspace(Workspace::Overview)]),
         ("tap_two_gap400", &[]),
         ("tap_two_moving45", &[]),
         ("tap_two_click", &[]),

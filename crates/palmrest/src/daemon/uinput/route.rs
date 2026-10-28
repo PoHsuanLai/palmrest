@@ -1,6 +1,6 @@
 //! Where the virtual devices come from: the input service, or palmrest's own uinput node.
 //!
-//! `Route` is itself a `DeviceSource`, so the emitter above it never knows which one it got.
+//! `LiveSource` is itself a `DeviceSource`, so the emitter above it never knows which one it got.
 //!
 //! There is no fallback from the one to the other: a machine whose input service is not running
 //! has no pad, and says so (INPUT-02). A fallback to the node would work exactly where the node
@@ -21,73 +21,52 @@ pub enum Origin {
     Direct,
 }
 
-/// A session from one of two sources.
-#[derive(Debug)]
-pub enum Either<A, B> {
-    Service(A),
-    Node(B),
-}
+/// A session from whichever source the command line chose.
+pub struct Live(Box<dyn Session>);
 
-impl<A: Session, B: Session> Session for Either<A, B> {
+impl Session for Live {
     fn create(&mut self, request: &Create) -> Result<Made, ClientError> {
-        match self {
-            Self::Service(s) => s.create(request),
-            Self::Node(n) => n.create(request),
-        }
+        self.0.create(request)
     }
 
     fn send(&mut self, device: DeviceId, events: &[Event]) -> Result<Sent, ClientError> {
-        match self {
-            Self::Service(s) => s.send(device, events),
-            Self::Node(n) => n.send(device, events),
-        }
+        self.0.send(device, events)
     }
 
     fn destroy(&mut self, device: DeviceId) -> Result<(), ClientError> {
-        match self {
-            Self::Service(s) => s.destroy(device),
-            Self::Node(n) => n.destroy(device),
-        }
+        self.0.destroy(device)
     }
 
     fn refusal(&mut self) -> Option<Reason> {
-        match self {
-            Self::Service(s) => s.refusal(),
-            Self::Node(n) => n.refusal(),
-        }
+        self.0.refusal()
     }
 }
 
-/// The ways to get a session.
-#[derive(Debug, Clone)]
-pub enum Route<S, N> {
-    /// The service alone.
-    Service(S),
-    /// The node alone.
-    Node(N),
-}
+/// The source of a real run: the service or the node, as `origin` says.
+#[derive(Debug, Clone, Copy)]
+pub struct LiveSource(pub Origin);
 
-/// The route of a real run.
-pub type LiveRoute = Route<Broker, DirectSource>;
+impl DeviceSource for LiveSource {
+    type Session = Live;
 
-impl LiveRoute {
-    /// The route the command line chose.
-    pub fn live(origin: Origin) -> Self {
-        match origin {
-            Origin::Service => Route::Service(Broker::default()),
-            Origin::Direct => Route::Node(DirectSource),
-        }
+    fn open(&self) -> Result<Live, ClientError> {
+        open_from(self.0, &Broker::default(), &DirectSource)
     }
 }
 
-impl<S: DeviceSource, N: DeviceSource> DeviceSource for Route<S, N> {
-    type Session = Either<S::Session, N::Session>;
-
-    fn open(&self) -> Result<Self::Session, ClientError> {
-        match self {
-            Route::Node(node) => node.open().map(Either::Node),
-            Route::Service(service) => service.open().map(Either::Service),
-        }
+/// A session from `service` or from `node`, never from the other when the first is missing.
+fn open_from<S: DeviceSource, N: DeviceSource>(
+    origin: Origin,
+    service: &S,
+    node: &N,
+) -> Result<Live, ClientError>
+where
+    S::Session: 'static,
+    N::Session: 'static,
+{
+    match origin {
+        Origin::Service => service.open().map(|s| Live(Box::new(s))),
+        Origin::Direct => node.open().map(|s| Live(Box::new(s))),
     }
 }
 
@@ -104,21 +83,25 @@ mod tests {
 
     #[test]
     fn a_missing_service_is_not_made_up_for_by_the_node() {
-        let route: Route<FakeSource, FakeSource> = Route::Service(absent());
-        assert!(matches!(route.open(), Err(ClientError::Absent)));
+        let node = FakeSource::new();
+        assert!(matches!(
+            open_from(Origin::Service, &absent(), &node),
+            Err(ClientError::Absent)
+        ));
+        assert_eq!(node.state().opened, 0);
     }
 
     #[test]
     fn a_working_service_makes_service_sessions_only() {
-        let route: Route<FakeSource, FakeSource> = Route::Service(FakeSource::new());
-        assert!(matches!(route.open(), Ok(Either::Service(_))));
+        let (service, node) = (FakeSource::new(), FakeSource::new());
+        assert!(open_from(Origin::Service, &service, &node).is_ok());
+        assert_eq!((service.state().opened, node.state().opened), (1, 0));
     }
 
     #[test]
     fn the_direct_choice_makes_node_sessions_only() {
-        let node = FakeSource::new();
-        let route: Route<FakeSource, FakeSource> = Route::Node(node.clone());
-        assert!(matches!(route.open(), Ok(Either::Node(_))));
-        assert_eq!(node.state().opened, 1);
+        let (service, node) = (FakeSource::new(), FakeSource::new());
+        assert!(open_from(Origin::Direct, &service, &node).is_ok());
+        assert_eq!((service.state().opened, node.state().opened), (0, 1));
     }
 }

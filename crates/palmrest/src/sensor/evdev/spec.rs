@@ -1,7 +1,7 @@
 //! What palmrest needs to know about an evdev node, read once when it is opened.
 
 use super::EvdevError;
-use crate::sensor::surface::{ButtonZones, DeviceClock, Extent, Surface};
+use crate::sensor::surface::{Extent, Surface};
 use crate::sensor::units::{MmRange, Resolution, UnitsPerMm};
 use serde::{Deserialize, Serialize};
 
@@ -61,8 +61,6 @@ impl EvdevSpec {
                 y: range(res.y, self.y),
             },
             resolution: res,
-            buttons: ButtonZones::Reported,
-            clock: DeviceClock::Kernel,
         }
     }
 }

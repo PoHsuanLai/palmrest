@@ -5,6 +5,8 @@ Open items and standing facts. Design references are to quire's `design/NN` docu
 
 ## Open items
 
+**Type rules changed (2026-10-28).** CONVENTIONS now follows the plain-Rust-first rule: `bool` is fine in private code, newtypes only hold a rule, one fact has one type, two-way outcomes are `Option`/`Result`. Two-arm enums and mirror enums in palmrest were folded into `bool`, `Option` and their owner types.
+
 **Palm rejection P1 and P3 calibrated on the device (2026-09-30).** The guessed defaults
 (light below size 8, palm at major 64 or more) rejected every touch on the first real install,
 so the mouse did not scroll: on this Magic Mouse 2 (Bluetooth) scrolling fingers measure 120 to
@@ -53,7 +55,7 @@ such a touch never counts, so no tap. As specified; tune on the device.
 **Not built: live workspace mode.** A synthetic four-contact swipe on the virtual touchpad so
 the compositor tracks the workspace. Its model and keys are built together with the driver
 that uses them. On our desktop,
-`WorkspacePrev/Next/Overview` and `ShellIpc(s)` are asked of the shell (`ToHost::Run`), which does
+`Workspace(step)` (the words `workspace_prev`, `workspace_next`, `workspace_overview`) and `ShellIpc(s)` are asked of the shell (`ToHost::Run`), which does
 what `sill workspace ...` and `sill` with the words of `s` do.
 
 **Settings that are constants (2026-10-27).** Only `scroll.speed` and the six
@@ -78,7 +80,7 @@ added there. `toml`, `serde_json` and `notify` use the pinned versions.
 **Every `TODO(untested)` left.** `sensor/evdev/mod.rs` (the whole sensor: fuzz, no contact
 size, SYN_DROPPED without an `EVIOCGMTSLOTS` re-read, a node opened mid-touch, P5 counts);
 `sensor/evdev/event.rs` (64-bit `input_event` layout only); `daemon/evdev.rs` (the capability
-rule, and 64-bit sysfs mask words); `sensor/frame.rs` (`Shape::Unmeasured`: no mm major axis
+rule, and 64-bit sysfs mask words); `sensor/frame.rs` (`shape: None`: no mm major axis
 for P3); `sensor/magic_mouse/mod.rs` (every model gets the Magic Mouse 2's surface);
 `sensor/magic_mouse/known.rs` (Magic Mouse 2 on USB, the USB-C model's id and layout, the Magic
 Mouse 1's report 0x29); `touch.rs` (12-bit wrap of deltas, now on every sensor's grid);
@@ -128,7 +130,7 @@ Mouse 1's report 0x29); `touch.rs` (12-bit wrap of deltas, now on every sensor's
   shell line over 16 words or 256 bytes a word) with a warning, and forgets it when another person
   takes the seat. A bad value in the person's layer falls back to the key's shipped default, not to
   the machine's value (the merge happens before the lenient reading). The actions that need the
-  session (`WorkspacePrev/Next/Overview`, `ShellIpc`, `Command`, and the KDE shortcuts) are a
+  session (`Workspace`, `ShellIpc`, `Command`, and the KDE shortcuts) are a
   `ToHost::Run` to the shell's connection alone, whatever its filter; the shell runs them as the
   person (sill: the workspace verbs and shell lines through its own request path, a program as a
   child of the shell). With no shell connected the action is dropped and logged. Key actions still go
@@ -252,7 +254,7 @@ The opt-in `foreign_momentum = "ours"` glide (design/11 §11.5.1 drag, `feel/mom
 `foreign_output = "off"` choice were deleted with their keys: none is a choice a person makes.
 
 **The `Sensor` enum and the evdev sensor.** `fn surface(&self) -> Surface` (extent in mm,
-resolution per axis, `ButtonZones`, `DeviceClock::{Ticks18, Kernel, ArrivalOnly}`) and
+resolution per axis) and
 `fn decode(&mut self, bytes: &[u8]) -> Result<Vec<Frame>, SensorError>`: `&mut self` and a
 `Vec` because an evdev read is a run of events whose frames end at `SYN_REPORT` and can span
 reads. `EvdevMultitouch` implements protocol B (`ABS_MT_SLOT`, `TRACKING_ID`,

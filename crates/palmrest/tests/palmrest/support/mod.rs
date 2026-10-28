@@ -9,7 +9,7 @@ mod strokes;
 
 use palmrest::recording::{self, Record};
 use palmrest::sensor::magic_mouse::encode::encode;
-use palmrest::sensor::magic_mouse::report::{Buttons, FrameStamp, Motion, Report};
+use palmrest::sensor::magic_mouse::report::{Buttons, Motion, Report, Stamp};
 use palmrest::touch::{Point, RawTouch, TouchId, TouchState};
 use palmrest::{Mono, Out};
 use palmrest_protocol::ToHost;
@@ -64,7 +64,7 @@ impl Script {
         let report = Report {
             buttons,
             motion,
-            stamp: FrameStamp::Ticks(((ns / 1000) % (1 << 18)) as u32),
+            stamp: Some(Stamp::Ticks(((ns / 1000) % (1 << 18)) as u32)),
             touches,
         };
         self.records.push(Record {
